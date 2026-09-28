@@ -1,3 +1,14 @@
+import os
+import sys
+
+# Limit OpenBLAS / NumPy / OpenMP threads to 1 to stay safely within cPanel nproc limit (40)
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["AI_MODE"] = os.getenv("AI_MODE", "cloud")
+
 from fastapi import FastAPI, HTTPException, Request, Response, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
@@ -8,7 +19,6 @@ from src.ingestion.worker import IngestionWorker
 from src.utils.helpers import StructuredQAResponse
 from src.api.whatsapp import WhatsAppClient
 import time
-import os
 
 app = FastAPI(
     title="Visual-RAG API",
