@@ -335,6 +335,7 @@ def process_incoming_media(sender_number: str, media_id: str, filename: str, mim
         traceback.print_exc()
 
 @app.get("/webhook")
+@app.get("/rag-documentvisual/webhook")
 async def whatsapp_verify(
     hub_mode: Optional[str] = Query(None, alias="hub.mode"),
     hub_challenge: Optional[str] = Query(None, alias="hub.challenge"),
@@ -348,6 +349,7 @@ async def whatsapp_verify(
     return Response(content="Verification failed", status_code=403)
 
 @app.post("/webhook")
+@app.post("/rag-documentvisual/webhook")
 async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     """Inbound webhook receiver for WhatsApp messages."""
     payload = await request.json()

@@ -18,7 +18,23 @@ os.environ["AI_MODE"] = os.getenv("AI_MODE", "cloud")
 try:
     from src.api.routes import app
     from a2wsgi import ASGIMiddleware
-    application = ASGIMiddleware(app)
+    fastapi_asgi = ASGIMiddleware(app)
+
+    def application(environ, start_response):
+        # Fast path for direct health check and root check to avoid gateway timeout
+        path_info = environ.get('PATH_INFO', '')
+        if path_info in ['/', '', '/health']:
+            status = '200 OK'
+            output = b'{"status": "ok", "message": "Visual-RAG Cloud Backend is Running"}'
+            response_headers = [
+                ('Content-type', 'application/json'),
+                ('Content-Length', str(len(output)))
+            ]
+            start_response(status, response_headers)
+            return [output]
+        
+        return fastapi_asgi(environ, start_response)
+
 except Exception as e:
     import traceback
     err_trace = traceback.format_exc()
