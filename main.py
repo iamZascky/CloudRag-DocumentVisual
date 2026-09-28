@@ -160,8 +160,8 @@ def answer_question(question: str, reader=None, vector_store=None, stream: bool 
         vector_store = ChromaVectorStore()
         
     retriever = HybridRetriever(sqlite_db=db, vector_store=vector_store)
-    # Retrieve top candidates (Multi-Page Hybrid Context)
-    results = retriever.retrieve(question, limit=3)
+    # Retrieve top 7 candidates (Multi-Page Hybrid Context)
+    results = retriever.retrieve(question, limit=7)
     if not results:
         if structured:
             print(json.dumps({"error": "No relevant documents found"}, indent=2))
@@ -169,25 +169,32 @@ def answer_question(question: str, reader=None, vector_store=None, stream: bool 
             print("❌ Could not find any relevant documents to answer the question.")
         return None
         
-    top_candidate = results[0]
+    # Gather multi-page text context from the top retrieved pages
+    context_blocks = []
+    retrieved_pages_summary = []
+    primary_idx = 0
+    
+    # Check if any top result is a recap/summary table (e.g. contains Rekening/Permohonan/Total)
+    for rank_idx, doc in enumerate(results):
+        doc_path = doc['file_path']
+        base_name = os.path.basename(doc_path)
+        retrieved_pages_summary.append(f"#{rank_idx+1} {base_name} (RRF: {doc['rrf_score']:.4f})")
+        
+        doc_details = db.get_document_by_path(doc_path)
+        if doc_details and doc_details.get('full_transcription'):
+            transcription = doc_details['full_transcription']
+            context_blocks.append(f"--- [PAGE {rank_idx+1}: {base_name}] ---\n{transcription[:1200]}")
+            # If the user asks for total/rekap and a recap table is found, prefer it as primary visual
+            if primary_idx == 0 and any(kw in transcription.lower() for kw in ["permohonan pencairan", "kode rekening", "rekapitulasi", "belanja bahan bakar dan pelumas"]):
+                primary_idx = rank_idx
+            
+    multi_page_context = "\n\n".join(context_blocks)
+    
+    top_candidate = results[primary_idx]
     target_page = top_candidate['file_path']
     fts_rank = top_candidate['fts_rank'] if top_candidate['fts_rank'] else "-"
     vec_rank = top_candidate['vector_rank'] if top_candidate['vector_rank'] else "-"
     sim_info = f" (Sim: {top_candidate['vector_similarity']:.4f})" if top_candidate.get('vector_similarity') is not None else ""
-    
-    # Gather multi-page text context from the top retrieved pages
-    context_blocks = []
-    retrieved_pages_summary = []
-    for rank_idx, doc in enumerate(results, start=1):
-        doc_path = doc['file_path']
-        base_name = os.path.basename(doc_path)
-        retrieved_pages_summary.append(f"#{rank_idx} {base_name} (RRF: {doc['rrf_score']:.4f})")
-        
-        doc_details = db.get_document_by_path(doc_path)
-        if doc_details and doc_details.get('full_transcription'):
-            context_blocks.append(f"--- [PAGE {rank_idx}: {base_name}] ---\n{doc_details['full_transcription'][:1200]}")
-            
-    multi_page_context = "\n\n".join(context_blocks)
     
     if not structured:
         print(f" 📄 Primary Doc : {os.path.basename(target_page)}")
