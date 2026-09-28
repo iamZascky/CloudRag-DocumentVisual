@@ -5,7 +5,7 @@ import torch
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, TextStreamer
 from qwen_vl_utils import process_vision_info
 from src.utils.helpers import load_config, StructuredQAResponse, parse_first_numeric
-from src.prompts.prompt_templates import DOCUMENT_EXTRACTION_PROMPT, format_qa_prompt, format_structured_qa_prompt
+from src.prompts.prompt_templates import DOCUMENT_EXTRACTION_PROMPT, format_qa_prompt, format_multi_page_qa_prompt, format_structured_qa_prompt
 
 config = load_config()
 storage_cfg = config.get("storage", {})
@@ -96,9 +96,12 @@ class QwenVisualReader:
             torch.cuda.empty_cache()
 
     @torch.inference_mode()
-    def answer_question(self, image_path: str, question: str, max_new_tokens: int = 1024, stream: bool = False) -> str:
-        """Answer a question about a document image with optional token streaming."""
-        prompt = format_qa_prompt(question)
+    def answer_question(self, image_path: str, question: str, max_new_tokens: int = 1024, stream: bool = False, context_text: str = "") -> str:
+        """Answer a question about a document image with optional cross-page context and token streaming."""
+        if context_text:
+            prompt = format_multi_page_qa_prompt(question, context_text)
+        else:
+            prompt = format_qa_prompt(question)
         messages = [
             {
                 "role": "user",

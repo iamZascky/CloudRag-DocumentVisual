@@ -21,13 +21,27 @@ DOCUMENT_EXTRACTION_PROMPT = (
 def format_qa_prompt(question: str) -> str:
     """Formats visual question answering prompt."""
     return (
-        f"Examine this document image and answer the question accurately based only on what is visibly present.\n\n"
+        f"Examine this document image and answer the question accurately based on the visible content.\n\n"
         f"Question: {question}\n\n"
         "Requirements:\n"
-        "- Answer directly with the key value, total, or finding first.\n"
-        "- If the document shows itemized breakdowns, periods, or sub-totals, list them clearly.\n"
-        "- Mention any relevant section header, document title, or account code found in the image.\n"
-        "- Do not guess or extrapolate numbers not visible in the document."
+        "- Provide a complete and informative answer in clear Indonesian/English.\n"
+        "- State the final total or amount clearly with currency/units (e.g. Rp ..., Liter).\n"
+        "- If the document shows sub-totals, items, or breakdowns, summarize them clearly.\n"
+        "- Do not guess numbers not visible in the document."
+    )
+
+def format_multi_page_qa_prompt(question: str, context_text: str) -> str:
+    """Formats multi-page visual question answering prompt with cross-page transcription context."""
+    return (
+        f"Examine this primary document image alongside the verified text transcriptions from other relevant retrieved pages of the document set.\n\n"
+        f"Context from related retrieved pages:\n"
+        f"```\n{context_text}\n```\n\n"
+        f"Question: {question}\n\n"
+        "Instructions:\n"
+        "- If a summary table or grand total is present (such as total belanja/permohonan pencairan), prioritize and state the overall total clearly.\n"
+        "- Provide a structured breakdown where appropriate (e.g., period breakdown, category amounts, or receipt volumes).\n"
+        "- State all monetary amounts with currency (Rp) and volume units (Liter).\n"
+        "- Answer politely, clearly, and concisely based strictly on the factual evidence provided."
     )
 
 def format_structured_qa_prompt(question: str) -> str:

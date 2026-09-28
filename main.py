@@ -160,7 +160,8 @@ def answer_question(question: str, reader=None, vector_store=None, stream: bool 
         vector_store = ChromaVectorStore()
         
     retriever = HybridRetriever(sqlite_db=db, vector_store=vector_store)
-    results = retriever.retrieve(question, limit=1)
+    # Retrieve top candidates (Multi-Page Hybrid Context)
+    results = retriever.retrieve(question, limit=3)
     if not results:
         if structured:
             print(json.dumps({"error": "No relevant documents found"}, indent=2))
@@ -174,10 +175,25 @@ def answer_question(question: str, reader=None, vector_store=None, stream: bool 
     vec_rank = top_candidate['vector_rank'] if top_candidate['vector_rank'] else "-"
     sim_info = f" (Sim: {top_candidate['vector_similarity']:.4f})" if top_candidate.get('vector_similarity') is not None else ""
     
+    # Gather multi-page text context from the top retrieved pages
+    context_blocks = []
+    retrieved_pages_summary = []
+    for rank_idx, doc in enumerate(results, start=1):
+        doc_path = doc['file_path']
+        base_name = os.path.basename(doc_path)
+        retrieved_pages_summary.append(f"#{rank_idx} {base_name} (RRF: {doc['rrf_score']:.4f})")
+        
+        doc_details = db.get_document_by_path(doc_path)
+        if doc_details and doc_details.get('full_transcription'):
+            context_blocks.append(f"--- [PAGE {rank_idx}: {base_name}] ---\n{doc_details['full_transcription'][:1200]}")
+            
+    multi_page_context = "\n\n".join(context_blocks)
+    
     if not structured:
-        print(f" 📄 Source Doc : {os.path.basename(target_page)}")
-        print(f" 🏷️  Category   : {top_candidate.get('doc_category', 'DOCUMENT')}")
-        print(f" 🎯 Match Stats: RRF Score: {top_candidate['rrf_score']:.5f} | FTS: Rank {fts_rank} | Vector: Rank {vec_rank}{sim_info}")
+        print(f" 📄 Primary Doc : {os.path.basename(target_page)}")
+        print(f" 📚 Top Context : {' | '.join(retrieved_pages_summary)}")
+        print(f" 🏷️  Category    : {top_candidate.get('doc_category', 'DOCUMENT')}")
+        print(f" 🎯 Match Stats : RRF Score: {top_candidate['rrf_score']:.5f} | FTS: Rank {fts_rank} | Vector: Rank {vec_rank}{sim_info}")
         print("─" * 70)
         print(f" 💡 AI VISUAL RESPONSE:")
         print("─" * 70)
@@ -192,6 +208,7 @@ def answer_question(question: str, reader=None, vector_store=None, stream: bool 
         result_data = {
             "question": question,
             "candidate_page": target_page,
+            "top_candidates": [c['file_path'] for c in results],
             "doc_category": top_candidate.get('doc_category', 'DOCUMENT'),
             "rrf_score": top_candidate['rrf_score'],
             "fts_rank": top_candidate['fts_rank'],
@@ -207,15 +224,16 @@ def answer_question(question: str, reader=None, vector_store=None, stream: bool 
             json.dump(result_data, f, indent=2, ensure_ascii=False)
         return structured_resp
     else:
-        output_text = reader.answer_question(target_page, question, stream=stream)
+        output_text = reader.answer_question(target_page, question, stream=stream, context_text=multi_page_context)
         elapsed = time.time() - start_time
         print("\n" + "─" * 70)
-        print(f" ⏱️ Latency: {elapsed:.2f}s | Source Path: {target_page}")
+        print(f" ⏱️ Latency: {elapsed:.2f}s | Primary Source: {target_page}")
         print("═" * 70)
         
         result_data = {
             "question": question,
             "candidate_page": target_page,
+            "top_candidates": [c['file_path'] for c in results],
             "doc_category": top_candidate.get('doc_category', 'DOCUMENT'),
             "rrf_score": top_candidate['rrf_score'],
             "fts_rank": top_candidate['fts_rank'],

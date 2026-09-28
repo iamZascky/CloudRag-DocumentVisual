@@ -113,3 +113,12 @@ class SqliteDocDatabase:
         existing = conn.execute("SELECT id FROM documents WHERE file_path = ?", (file_path,)).fetchone()
         conn.close()
         return existing is not None
+
+    def get_document_by_path(self, file_path: str) -> Optional[Dict]:
+        conn = self.get_connection()
+        row = conn.execute("""
+            SELECT file_path, doc_category, title_or_subject, full_transcription, structured_data
+            FROM documents WHERE file_path = ?
+        """, (file_path,)).fetchone()
+        conn.close()
+        return dict(row) if row else None
