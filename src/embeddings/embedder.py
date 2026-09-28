@@ -1,4 +1,13 @@
 import os
+import sys
+
+# Limit OpenBLAS / NumPy / OpenMP threads to 1 to stay safely within cPanel nproc limit (40)
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+
 from typing import List, Union
 from src.utils.helpers import load_config
 
