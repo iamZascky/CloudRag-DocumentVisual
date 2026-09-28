@@ -2,7 +2,6 @@ from fastapi import FastAPI, HTTPException, Request, Response, Query, Background
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from src.retrieval.retriever import HybridRetriever
-from src.llm.llm_client import QwenVisualReader
 from src.vectordb.sqlite_db import SqliteDocDatabase
 from src.vectordb.vector_store import ChromaVectorStore
 from src.ingestion.worker import IngestionWorker
@@ -30,10 +29,33 @@ def get_retriever() -> HybridRetriever:
         _retriever = HybridRetriever()
     return _retriever
 
-def get_reader() -> QwenVisualReader:
+def get_reader():
+    """
+    Returns either Cloud GeminiVisualReader or Local QwenVisualReader based on AI_MODE env var.
+    Default: 'cloud' if GEMINI_API_KEY is present or AI_MODE=cloud, else 'local'.
+    """
     global _reader
     if _reader is None:
-        _reader = QwenVisualReader()
+        ai_mode = os.getenv("AI_MODE", "").lower()
+        gemini_key = os.getenv("GEMINI_API_KEY", "")
+
+        # Prefer cloud mode if explicitly requested or if running on hosting without GPU
+        if ai_mode == "cloud" or (not ai_mode and gemini_key):
+            from src.llm.gemini_client import GeminiVisualReader
+            print("[LLM Factory] ☁️ Initializing Cloud GeminiVisualReader (Zero GPU/Torch)...")
+            _reader = GeminiVisualReader(api_key=gemini_key)
+        else:
+            try:
+                from src.llm.llm_client import QwenVisualReader
+                print("[LLM Factory] 🖥️ Initializing Local QwenVisualReader (GPU BF16)...")
+                _reader = QwenVisualReader()
+            except Exception as e:
+                if gemini_key:
+                    from src.llm.gemini_client import GeminiVisualReader
+                    print(f"[LLM Factory] Local GPU loader failed ({e}), falling back to Cloud Gemini...")
+                    _reader = GeminiVisualReader(api_key=gemini_key)
+                else:
+                    raise e
     return _reader
 
 def get_sqlite_db() -> SqliteDocDatabase:

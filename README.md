@@ -213,15 +213,19 @@ Once running, users can interact with your bot directly on WhatsApp:
 rag-DocumentVisual/
 ├── config.yaml          # Centralized configuration (models, resolutions, paths)
 ├── .env.example         # Environment variables template
-├── requirements.txt     # Python dependencies
+├── requirements.txt     # Python dependencies (Local GPU mode)
+├── requirements-cloud.txt # Lightweight Python dependencies for Shared Hosting
+├── passenger_wsgi.py    # cPanel Phusion Passenger WSGI entrypoint
 ├── update.md            # Production RAG architecture & real-life strategy notes
+├── recommendation.md    # Shared hosting vs LangGraph deployment analysis
 ├── main.py              # CLI entry point (index, search, ask, chat)
 ├── src/
 │   ├── api/             # FastAPI REST endpoints & Meta WhatsApp Cloud client
 │   │   ├── routes.py    # REST routes & WhatsApp webhook handlers
 │   │   └── whatsapp.py  # Modular WhatsAppClient (handshake, parser, sender)
-│   ├── ingestion/       # PDF rendering (Poppler) & CLAHE contrast enhancement
-│   │   └── loader.py
+│   ├── ingestion/       # PDF rendering & CLAHE contrast enhancement
+│   │   ├── loader.py    # Page rendering (Poppler / pypdfium2 fallback) & CLAHE
+│   │   └── worker.py    # Background IngestionWorker for WhatsApp PDF upload
 │   ├── chunking/        # Page and text chunking logic
 │   │   └── chunker.py
 │   ├── embeddings/      # multilingual-e5-small CPU embedding engine
@@ -233,10 +237,9 @@ rag-DocumentVisual/
 │   │   └── retriever.py
 │   ├── prompts/         # Structured extraction & QA prompt templates
 │   │   └── prompt_templates.py
-│   ├── llm/             # Qwen2.5-VL-3B-Instruct native BF16 vision client
-│   │   └── llm_client.py
-│   ├── api/             # FastAPI REST endpoints (ready for WhatsApp / Webhooks)
-│   │   └── routes.py
+│   ├── llm/             # Document Vision-Language Model interfaces
+│   │   ├── llm_client.py     # Local Qwen2.5-VL GPU BF16 client
+│   │   └── gemini_client.py  # Cloud Google Gemini Flash REST client (Zero GPU)
 │   └── utils/           # Configuration loader & Pydantic arithmetic validation
 │       └── helpers.py
 ├── scripts/

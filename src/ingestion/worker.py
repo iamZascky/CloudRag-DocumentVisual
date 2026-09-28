@@ -3,7 +3,6 @@ import json
 import time
 from typing import Dict, Any, List
 from src.ingestion.loader import render_pdf, enhance_scan
-from src.llm.llm_client import QwenVisualReader
 from src.vectordb.sqlite_db import SqliteDocDatabase
 from src.vectordb.vector_store import ChromaVectorStore
 from src.utils.helpers import validate_extraction
@@ -15,7 +14,7 @@ class IngestionWorker:
     1. Downloads or accepts file path
     2. Renders pages (if PDF)
     3. Enhances contrast via CLAHE
-    4. Extracts structured data & OCR via Qwen2.5-VL
+    4. Extracts structured data & OCR via Vision AI (Gemini Flash or Qwen2.5-VL)
     5. Indexes into SQLite FTS5 and ChromaDB vector store
     6. Saves formatted .txt dumps into ./storage/outputtext/
     7. Sends completion message to WhatsApp recipient
@@ -23,7 +22,7 @@ class IngestionWorker:
 
     def __init__(
         self,
-        reader: QwenVisualReader,
+        reader: Any,
         sqlite_db: SqliteDocDatabase,
         vector_store: ChromaVectorStore,
         whatsapp_client: WhatsAppClient

@@ -1,0 +1,16 @@
+# Lightweight Requirements for Shared Hosting / Cloud AI (cPanel)
+# Total download size < 50MB, Total RAM footprint < 100MB
+# Zero GPU / CUDA / PyTorch required!
+
+fastapi>=0.110.0
+uvicorn>=0.28.0
+a2wsgi>=1.10.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+pydantic>=2.6.0
+pyyaml>=6.0.1
+pypdfium2>=4.30.0
+opencv-python-headless>=4.9.0.80
+numpy>=1.26.0
+chromadb>=0.4.24
+sentence-transformers>=2.6.0

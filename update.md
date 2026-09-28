@@ -60,3 +60,62 @@ Setelah mengambil 20–50 kandidat kasar dari database (FTS5 + Vector), sistem m
 ## 4. Key Takeaways untuk Portofolio & LinkedIn
 
 > *"In this project, I addressed the classic multi-page RAG retrieval challenge (recapitulation vs. itemized receipts) by implementing Hybrid RRF Fusion and Cross-Page Context Injection. In future enterprise iterations, this can be further augmented with Hierarchical Indexing, Query Expansion, and Two-Stage Cross-Encoder Reranking."*
+
+---
+
+## 5. Analisis Performa & Fitur Pengembangan Lanjutan (Production Roadmap)
+
+Berikut adalah daftar optimasi performa dan fitur baru yang dirancang untuk meningkatkan skalabilitas dan pengalaman pengguna (khususnya integrasi WhatsApp Bot dan migrasi ke Cloud/Shared Hosting):
+
+### A. Optimasi Performa & Stabilitas VRAM (Performance & Reliability)
+
+1. **Dual AI Mode: Local GPU vs Cloud AI Fallback (`AI_MODE=local|cloud`)**
+   - **Kondisi Saat Ini**: Bot 100% bergantung pada inferensi lokal Qwen2.5-VL di GPU lokal (butuh VRAM ~7–8 GB).
+   - **Rencana Peningkatan**: Menambahkan flag `AI_MODE=cloud` (Google Gemini 1.5/2.0 Flash atau OpenAI Vision API).
+   - **Manfaat**:
+     - Memungkinkan deploy server ke **Shared Hosting / cPanel biasa** (tanpa GPU dedicated dan tanpa Docker).
+     - Menghilangkan latensi GPU lokal, inferensi cloud hanya ~1–2 detik per query.
+
+2. **Async Concurrency Lock untuk GPU (VRAM OOM Protection)**
+   - **Kondisi Saat Ini**: Jika beberapa pengguna WhatsApp mengirim pertanyaan atau dokumen secara bersamaan, beberapa background task dapat memicu inferensi model visi paralel yang berpotensi menyebabkan *CUDA Out of Memory (OOM)*.
+   - **Rencana Peningkatan**: Mengimplementasikan `asyncio.Semaphore(1)` atau `threading.Lock()` khusus pada pipeline GPU.
+   - **Manfaat**: Bot menangani antrean dengan anggun (*graceful queueing*) dan dapat mengirim pesan tunggu status posisi antrean ke pengguna WhatsApp.
+
+3. **Fast-Path Page Pre-Filtering untuk Dokumen Besar (> 10 Halaman)**
+   - **Kondisi Saat Ini**: `IngestionWorker` memproses setiap halaman PDF satu per satu ke Vision LLM. Pada dokumen 30+ halaman, proses bisa memakan waktu 2–3 menit.
+   - **Rencana Peningkatan**: Ekstraksi teks cepat menggunakan `PyMuPDF / fitz` di awal.
+     - Halaman teks digital murni langsung diindeks ke SQLite & Vector (< 0.05 detik).
+     - Hanya halaman dengan gambar, stempel, tabel rumit, atau tulisan tangan yang dialirkan ke Qwen2.5-VL.
+   - **Manfaat**: Mempercepat proses indexing dokumen hingga **10x lebih cepat**.
+
+---
+
+### B. Fitur Fungsional & User Experience (UX & Features)
+
+4. **Multi-Turn Conversation Memory (WhatsApp Chat History)**
+   - **Kondisi Saat Ini**: Setiap pesan WhatsApp bersifat *stateless* (tidak mengingat pertanyaan sebelumnya).
+   - **Rencana Peningkatan**: Menyimpan 3–5 interaksi terakhir per nomor telepon di SQLite (`session_history`).
+   - **Manfaat**: Pengguna bisa berdiskusi interaktif secara bertahap (contoh: *"Berapa totalnya?"* lalu disusul *"Tolong rincikan nomor kwitansinya"*).
+
+5. **Pengiriman Foto/Gambar Halaman Bukti ke WhatsApp (`send_image_message`)**
+   - **Kondisi Saat Ini**: Bot hanya membalas dengan teks jawaban dan menyebutkan nama file referensi.
+   - **Rencana Peningkatan**: Menggunakan WhatsApp Cloud API Media Messages (`type: image`) untuk mengirim gambar halaman kwitansi fisik / tabel rekap yang relevan langsung ke chat WhatsApp.
+   - **Manfaat**: Pengguna mendapatkan bukti visual otentik seketika tanpa harus membuka arsip manual.
+
+6. **Filter Pencarian per Dokumen (`doc_filter`)**
+   - **Kondisi Saat Ini**: Perintah `/cari <keyword>` menelusuri seluruh basis data dokumen.
+   - **Rencana Peningkatan**: Menambahkan sintaks filter dokumen, contoh: `/cari SPBU doc:BBM_September.pdf`.
+   - **Manfaat**: Akurasi pencarian meningkat drastis ketika basis data telah menampung ribuan dokumen dari berbagai divisi atau periode.
+
+---
+
+### C. Matriks Prioritas Implementasi
+
+| Prioritas | Fitur | Kategori | Alasan Utama |
+|---|---|---|---|
+| **P1** | **VRAM Concurrency Lock** | Reliability | Mencegah crash GPU saat banyak pengguna WA aktif serentak |
+| **P2** | **Cloud AI Fallback (Gemini Flash)** | Portability | Fondasi deploy ke shared hosting murah tanpa GPU |
+| **P3** | **Kirim Gambar Bukti ke WhatsApp** | User Experience | Nilai jual utama dari *Visual RAG* adalah verifikasi visual langsung |
+| **P4** | **Fast-Path Page Pre-Filtering** | Performance | Mempercepat upload PDF tebal (> 20 halaman) |
+| **P5** | **Multi-Turn Chat History** | UX | Interaksi natural seperti ChatGPT di WhatsApp |
+
