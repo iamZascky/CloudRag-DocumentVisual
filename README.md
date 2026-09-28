@@ -257,3 +257,4 @@ rag-DocumentVisual/
     ├── outputtext/          # Clean .txt plain-text exports for all pages
     └── result.json          # Latest query response output
 ```
+asdas
