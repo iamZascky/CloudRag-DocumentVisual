@@ -5,15 +5,22 @@ import os
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, CURRENT_DIR)
 
-# Set production environment variables
+# Force cloud mode on cPanel hosting
 os.environ["AI_MODE"] = os.getenv("AI_MODE", "cloud")
 
-from src.api.routes import app
-
-# Passenger requires an ASGI-to-WSGI adapter or native ASGI callable named 'application'
 try:
+    from src.api.routes import app
     from a2wsgi import ASGIMiddleware
     application = ASGIMiddleware(app)
-except ImportError:
-    # If a2wsgi is not yet installed, use native callable
-    application = app
+except Exception as e:
+    import traceback
+    err_trace = traceback.format_exc()
+    print(f"[Passenger Boot Error] {err_trace}", file=sys.stderr)
+    
+    # Fallback minimal WSGI app that prints the error in browser instead of 503
+    def application(environ, start_response):
+        status = '500 Internal Server Error'
+        output = f"<h3>Application Startup Error</h3><pre>{err_trace}</pre>".encode('utf-8')
+        response_headers = [('Content-type', 'text/html'), ('Content-Length', str(len(output)))]
+        start_response(status, response_headers)
+        return [output]
