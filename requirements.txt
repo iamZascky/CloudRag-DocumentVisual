@@ -1,0 +1,13 @@
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch>=2.4.0
+torchvision
+pdf2image>=1.17.0
+opencv-python-headless
+transformers>=4.48.0
+qwen-vl-utils
+accelerate
+pillow
+pydantic>=2.0
+chromadb>=0.5.0
+fastembed>=0.3.0
+sentence-transformers>=3.0.0

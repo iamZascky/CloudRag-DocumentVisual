@@ -1,0 +1,82 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+
+# Storage, Models & Processed Data (Never commit outputs, scans, or weights)
+storage/*
+!storage/.gitkeep
+!storage/**/.gitkeep
+storage/result.json
+storage/**/*.jpg
+storage/**/*.jpeg
+storage/**/*.png
+storage/**/*.txt
+storage/models/*
+storage/pages/*
+storage/enhanced_pages/*
+storage/outputtext/*
+
+# Benchmark Files & Reports (Kept strictly local on this computer)
+*benchmark*
+*BENCHMARK*
+BENCHMARK.md
+BENCHMARK_MAIN.md
+benchmark.py
+tests/test_benchmark.py
+storage/benchmark/
+
+# Input Data (Ignore user uploaded PDFs, receipts, and scans)
+data/*
+!data/.gitkeep
+
+# Local External Tools & Binaries (e.g. Poppler for Windows)
+tools/*
+!tools/.gitkeep
+
+# SQLite Databases & Results
+*.db
+*.sqlite
+*.sqlite3
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# Logs & Temporary Files
+*.log
+*.tmp
+*.bak
+
+# AI & Agent Caches
+.gemini/
+.agents/
+
+# Unit test / Coverage
+.coverage
+.pytest_cache/
+update.md
+feature.md
