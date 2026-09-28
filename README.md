@@ -154,9 +154,9 @@ The project includes an enterprise-ready WhatsApp Bot powered by Meta WhatsApp C
 #### A. Configure Credentials (`.env`)
 Create a `.env` file based on `.env.example`:
 ```ini
-WHATSAPP_TOKEN=EAAN...
-PHONE_NUMBER_ID=1382298338296594
-WHATSAPP_VERIFY_TOKEN=docuvisual_secret_token_2026
+WHATSAPP_TOKEN=your_permanent_system_user_token_here
+PHONE_NUMBER_ID=your_phone_number_id_here
+WHATSAPP_VERIFY_TOKEN=your_custom_secret_verify_token
 ```
 
 > [!TIP]
@@ -182,7 +182,7 @@ Meta requires a valid `https://` webhook endpoint. Run Cloudflare Tunnel (or ngr
 #### D. Connect Webhook in Meta Developer Dashboard
 1. Go to your Meta App Dashboard -> **WhatsApp** -> **Configuration**.
 2. Set **Callback URL**: `https://<your-tunnel-url>.trycloudflare.com/webhook`
-3. Set **Verify Token**: `docuvisual_secret_token_2026` (must match `WHATSAPP_VERIFY_TOKEN` in `.env`).
+3. Set **Verify Token**: Enter the same secret token you set in `WHATSAPP_VERIFY_TOKEN` (in `.env`).
 4. Click **Verify and Save**.
 5. Under **Webhook Fields**, click **Subscribe** on the **`messages`** event.
 
@@ -191,7 +191,7 @@ Meta requires a valid `https://` webhook endpoint. Run Cloudflare Tunnel (or ngr
 - **For Any User (Live Public Bot):**
   1. Toggle the App Mode in the top navigation bar from **In Development** to **Live**.
   2. (Meta requires adding a basic Privacy Policy URL in **App Settings -> Basic** to go Live).
-  3. Once Live, any WhatsApp user worldwide can message your bot number (+62 851-1164-1103) and receive responses automatically!
+  3. Once Live, any WhatsApp user worldwide can message your bot number and receive responses automatically!
 
 #### F. WhatsApp Bot Capabilities & Commands
 Once running, users can interact with your bot directly on WhatsApp:
