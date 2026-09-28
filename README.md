@@ -147,14 +147,64 @@ python main.py --chat
 ```
 Keeps Qwen2.5-VL and the embedding model resident in memory to avoid reloading overhead between queries.
 
-### 5. Running the REST API Server (FastAPI)
-```powershell
-uvicorn src.api.routes:app --host 0.0.0.0 --port 8000
+### 5. Running the REST API & WhatsApp Bot Server (FastAPI)
+
+The project includes an enterprise-ready WhatsApp Bot powered by Meta WhatsApp Cloud API with multi-page visual RAG.
+
+#### A. Configure Credentials (`.env`)
+Create a `.env` file based on `.env.example`:
+```ini
+WHATSAPP_TOKEN=EAAN...
+PHONE_NUMBER_ID=1382298338296594
+WHATSAPP_VERIFY_TOKEN=docuvisual_secret_token_2026
 ```
-Provides endpoints ready for webhooks, frontends, or WhatsApp bots:
-- `GET /health`: Health check
-- `POST /search`: Hybrid RRF search candidates
-- `POST /ask`: End-to-end Visual-RAG question answering with Pydantic JSON response (`{"question": "...", "data": {"numeric_value": 45562550.0, ...}}`)
+
+> [!TIP]
+> **Permanent Token (Anti-Expire):** Do not use the temporary 24-hour token from the "API Setup" tab. Instead:
+> 1. Go to **Business Settings** (`business.facebook.com/settings`) -> **Users** -> **System Users**.
+> 2. Create an **Admin System User** (or use existing).
+> 3. Assign your WhatsApp App asset with Full Control.
+> 4. Click **Generate New Token**, select your App, set expiration to **Never**, and check `whatsapp_business_messaging` and `whatsapp_business_management`.
+> 5. Paste this permanent token into `WHATSAPP_TOKEN` in `.env`.
+
+#### B. Start the Webhook Server
+```powershell
+uvicorn src.api.routes:app --host 0.0.0.0 --port 8000 --reload
+```
+
+#### C. Expose via Public HTTPS Tunnel
+Meta requires a valid `https://` webhook endpoint. Run Cloudflare Tunnel (or ngrok) in a separate terminal:
+```powershell
+.\cloudflared.exe tunnel --url http://localhost:8000
+```
+*(Or if installed globally: `cloudflared tunnel --url http://localhost:8000`)*
+
+#### D. Connect Webhook in Meta Developer Dashboard
+1. Go to your Meta App Dashboard -> **WhatsApp** -> **Configuration**.
+2. Set **Callback URL**: `https://<your-tunnel-url>.trycloudflare.com/webhook`
+3. Set **Verify Token**: `docuvisual_secret_token_2026` (must match `WHATSAPP_VERIFY_TOKEN` in `.env`).
+4. Click **Verify and Save**.
+5. Under **Webhook Fields**, click **Subscribe** on the **`messages`** event.
+
+#### E. Receiving Messages from Other Users (Production / Multi-User)
+- **In Development Mode:** Only numbers explicitly registered under **API Setup -> To (Manage Phone Number List)** can send and receive messages.
+- **For Any User (Live Public Bot):**
+  1. Toggle the App Mode in the top navigation bar from **In Development** to **Live**.
+  2. (Meta requires adding a basic Privacy Policy URL in **App Settings -> Basic** to go Live).
+  3. Once Live, any WhatsApp user worldwide can message your bot number (+62 851-1164-1103) and receive responses automatically!
+
+#### F. WhatsApp Bot Capabilities & Commands
+Once running, users can interact with your bot directly on WhatsApp:
+- **Live Document Ingestion (PDF / Images)**: 
+  Send any PDF document or scan image directly to the WhatsApp chat! The bot's background **`IngestionWorker`** will:
+  1. Download the file from Meta Cloud API to `./data/`.
+  2. Send progress messages to the user.
+  3. Render pages with Poppler and enhance contrast with CLAHE.
+  4. Perform OCR & structured field extraction via Qwen2.5-VL.
+  5. Index all pages into SQLite FTS5 and ChromaDB vector store.
+  6. Notify user once ready for searching and asking questions!
+- **Fast Search Mode (< 1s)**: Send `/cari <keyword>` or `cari: <keyword>` (e.g. `cari: SPBU Balung Lor`). Returns instant lexical + vector matches with relevance scores and snippets.
+- **AI Visual QA Mode**: Ask any free-form question (e.g. `Berapa total belanja bbm?`). Automatically triggers Top-7 multi-page hybrid context retrieval, smart table prioritization, and Qwen2.5-VL vision-language inference with instant acknowledgement.
 
 ---
 
@@ -164,8 +214,12 @@ rag-DocumentVisual/
 ├── config.yaml          # Centralized configuration (models, resolutions, paths)
 ├── .env.example         # Environment variables template
 ├── requirements.txt     # Python dependencies
+├── update.md            # Production RAG architecture & real-life strategy notes
 ├── main.py              # CLI entry point (index, search, ask, chat)
 ├── src/
+│   ├── api/             # FastAPI REST endpoints & Meta WhatsApp Cloud client
+│   │   ├── routes.py    # REST routes & WhatsApp webhook handlers
+│   │   └── whatsapp.py  # Modular WhatsAppClient (handshake, parser, sender)
 │   ├── ingestion/       # PDF rendering (Poppler) & CLAHE contrast enhancement
 │   │   └── loader.py
 │   ├── chunking/        # Page and text chunking logic

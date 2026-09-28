@@ -78,3 +78,7 @@ desktop.ini
 # Unit test / Coverage
 .coverage
 .pytest_cache/
+
+# Binary tunnels
+cloudflared.exe
+ngrok.exe

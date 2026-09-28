@@ -62,6 +62,56 @@ def test_structured_qa_schema():
     assert resp.currency == "USD"
     print("[PASS] test_structured_qa_schema passed.")
 
+def test_whatsapp_client():
+    from src.api.whatsapp import WhatsAppClient
+    client = WhatsAppClient(verify_token="test_token")
+    challenge = client.verify_challenge("subscribe", "test_token", "challenge_abc")
+    assert challenge == "challenge_abc"
+    
+    mock_payload = {
+        "entry": [{
+            "changes": [{
+                "value": {
+                    "messages": [{
+                        "from": "6285111641103",
+                        "id": "wamid.123",
+                        "type": "text",
+                        "text": {"body": "total belanja bbm"}
+                    }]
+                }
+            }]
+        }]
+    }
+    parsed = client.parse_incoming_message(mock_payload)
+    assert parsed["sender"] == "6285111641103"
+    assert parsed["body"] == "total belanja bbm"
+
+    # Test document attachment parsing
+    mock_doc_payload = {
+        "entry": [{
+            "changes": [{
+                "value": {
+                    "messages": [{
+                        "from": "6285111641103",
+                        "id": "wamid.456",
+                        "type": "document",
+                        "document": {
+                            "id": "media_999",
+                            "mime_type": "application/pdf",
+                            "filename": "Kwitansi_BBM.pdf"
+                        }
+                    }]
+                }
+            }]
+        }]
+    }
+    parsed_doc = client.parse_incoming_message(mock_doc_payload)
+    assert parsed_doc["sender"] == "6285111641103"
+    assert parsed_doc["media_id"] == "media_999"
+    assert parsed_doc["filename"] == "Kwitansi_BBM.pdf"
+    assert parsed_doc["type"] == "document"
+    print("[PASS] test_whatsapp_client (text & doc) passed.")
+
 if __name__ == "__main__":
     print("=" * 50)
     print("  Running Visual-RAG Modular Test Suite")
@@ -72,6 +122,7 @@ if __name__ == "__main__":
     test_hybrid_retriever()
     test_validator()
     test_structured_qa_schema()
+    test_whatsapp_client()
     print("=" * 50)
     print("  All tests passed successfully!")
     print("=" * 50)
