@@ -16,6 +16,9 @@ import time
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.abspath(os.path.join(CURRENT_DIR, "../..")))
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(CURRENT_DIR, "../../.env"))
+
 from src.api.whatsapp import WhatsAppClient
 from src.api.routes import process_and_reply_whatsapp, process_incoming_media, get_whatsapp_client
 
