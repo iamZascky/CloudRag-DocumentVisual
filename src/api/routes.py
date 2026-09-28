@@ -46,11 +46,13 @@ def get_reader():
     """
     global _reader
     if _reader is None:
-        ai_mode = os.getenv("AI_MODE", "").lower()
+        from dotenv import load_dotenv
+        load_dotenv(override=True)
+        ai_mode = os.getenv("AI_MODE", "cloud").lower()
         gemini_key = os.getenv("GEMINI_API_KEY", "")
 
-        # Prefer cloud mode if explicitly requested or if running on hosting without GPU
-        if ai_mode == "cloud" or (not ai_mode and gemini_key):
+        # Always default to cloud mode on hosting or when Gemini key exists
+        if ai_mode != "local" or gemini_key:
             from src.llm.gemini_client import GeminiVisualReader
             print("[LLM Factory] ☁️ Initializing Cloud GeminiVisualReader (Zero GPU/Torch)...")
             _reader = GeminiVisualReader(api_key=gemini_key)
@@ -60,12 +62,9 @@ def get_reader():
                 print("[LLM Factory] 🖥️ Initializing Local QwenVisualReader (GPU BF16)...")
                 _reader = QwenVisualReader()
             except Exception as e:
-                if gemini_key:
-                    from src.llm.gemini_client import GeminiVisualReader
-                    print(f"[LLM Factory] Local GPU loader failed ({e}), falling back to Cloud Gemini...")
-                    _reader = GeminiVisualReader(api_key=gemini_key)
-                else:
-                    raise e
+                from src.llm.gemini_client import GeminiVisualReader
+                print(f"[LLM Factory] Local GPU loader failed ({e}), falling back to Cloud Gemini...")
+                _reader = GeminiVisualReader(api_key=gemini_key)
     return _reader
 
 def get_sqlite_db() -> SqliteDocDatabase:
