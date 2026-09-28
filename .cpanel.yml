@@ -1,6 +1,6 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/iamb1136/rag-documentvisual/
-    - /bin/cp -R * $DEPLOYPATH
-    - touch $DEPLOYPATH/tmp/restart.txt
+    - export DEPLOYPATH=/home/iamb1136/rag-documentvisual
+    - /bin/cp -rf * $DEPLOYPATH/
+    - /bin/touch $DEPLOYPATH/tmp/restart.txt

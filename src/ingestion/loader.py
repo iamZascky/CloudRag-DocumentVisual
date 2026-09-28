@@ -2,7 +2,6 @@ import os
 import cv2
 import numpy as np
 from typing import List, Optional
-from pdf2image import convert_from_path
 from src.utils.helpers import load_config
 
 config = load_config()
@@ -27,6 +26,7 @@ def render_pdf(pdf_path: str, dpi: int = DEFAULT_DPI, output_dir: Optional[str] 
     
     # Method 1: Try pdf2image with Poppler
     try:
+        from pdf2image import convert_from_path
         poppler_path = os.path.abspath("./tools/poppler-26.09.0/Library/bin")
         if not os.path.exists(poppler_path):
             poppler_path = None
