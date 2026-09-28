@@ -78,5 +78,3 @@ desktop.ini
 # Unit test / Coverage
 .coverage
 .pytest_cache/
-update.md
-feature.md
