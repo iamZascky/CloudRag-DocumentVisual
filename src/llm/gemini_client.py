@@ -66,27 +66,37 @@ class GeminiVisualReader:
         headers = {"Content-Type": "application/json"}
         last_err = None
 
-        # Try candidate models in order (e.g. gemini-2.5-flash -> gemini-1.5-flash)
+        # Try candidate models in order with exponential backoff on 503 / 429
         models_to_try = list(dict.fromkeys(self.candidate_models))
         for m in models_to_try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={self.api_key}"
-            try:
-                response = requests.post(url, headers=headers, json=payload, timeout=35)
-                if response.status_code == 200:
-                    self.model = m  # Keep the working model
-                    res_json = response.json()
-                    candidates = res_json.get("candidates", [])
-                    if candidates:
-                        content = candidates[0].get("content", {})
-                        parts_resp = content.get("parts", [])
-                        if parts_resp:
-                            return parts_resp[0].get("text", "").strip()
-                    return ""
-                else:
-                    last_err = f"Gemini API Error {response.status_code} on {m}: {response.text}"
-                    print(f"[GeminiClient] Model '{m}' returned {response.status_code}, trying next model...")
-            except Exception as req_err:
-                last_err = str(req_err)
+            for attempt in range(3):
+                try:
+                    response = requests.post(url, headers=headers, json=payload, timeout=40)
+                    if response.status_code == 200:
+                        self.model = m  # Keep the working model
+                        res_json = response.json()
+                        candidates = res_json.get("candidates", [])
+                        if candidates:
+                            content = candidates[0].get("content", {})
+                            parts_resp = content.get("parts", [])
+                            if parts_resp:
+                                return parts_resp[0].get("text", "").strip()
+                        return ""
+                    elif response.status_code in [503, 429]:
+                        # Transient high-load or rate limit from Google; wait and retry
+                        wait_sec = (attempt + 1) * 2
+                        print(f"[GeminiClient] Model '{m}' returned {response.status_code}. Retrying in {wait_sec}s (attempt {attempt+1}/3)...")
+                        import time
+                        time.sleep(wait_sec)
+                        continue
+                    else:
+                        last_err = f"Gemini API Error {response.status_code} on {m}: {response.text}"
+                        print(f"[GeminiClient] Model '{m}' returned {response.status_code}, trying next model...")
+                        break
+                except Exception as req_err:
+                    last_err = str(req_err)
+                    break
 
         raise RuntimeError(f"All Gemini models failed. Last error: {last_err}")
 
