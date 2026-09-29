@@ -84,65 +84,76 @@ class IngestionWorker:
                 processed_count += 1
                 continue
 
-            print(f"[IngestionWorker] 👁️ Reading Page {idx}/{total_pages} via Qwen2.5-VL...")
-            result = self.reader.process_document(enhanced_path)
+            try:
+                print(f"[IngestionWorker] 👁️ Reading Page {idx}/{total_pages} via Vision AI...")
+                result = self.reader.process_document(enhanced_path)
 
-            doc_category = result.get("doc_category", "OTHER")
-            structured_data = result.get("structured_data", {})
-            title = result.get("title_or_subject", f"{filename} - Hal {idx}")
-            full_text = result.get("full_transcription", "")
+                doc_category = result.get("doc_category", "OTHER")
+                structured_data = result.get("structured_data", {})
+                title = result.get("title_or_subject", f"{filename} - Hal {idx}")
+                full_text = result.get("full_transcription", "")
 
-            # Validation
-            validation_status = validate_extraction(doc_category, structured_data)
-            structured_data["validation_status"] = validation_status
+                # Validation
+                validation_status = validate_extraction(doc_category, structured_data)
+                structured_data["validation_status"] = validation_status
 
-            # Save to SQLite FTS5
-            self.db.save_document(
-                file_path=enhanced_path,
-                doc_category=doc_category,
-                title=title,
-                full_text=full_text,
-                structured_json=json.dumps(structured_data, ensure_ascii=False),
-                has_visuals=result.get("has_stamps_or_signatures", False)
-            )
+                # Save to SQLite FTS5
+                self.db.save_document(
+                    file_path=enhanced_path,
+                    doc_category=doc_category,
+                    title=title,
+                    full_text=full_text,
+                    structured_json=json.dumps(structured_data, ensure_ascii=False),
+                    has_visuals=result.get("has_stamps_or_signatures", False)
+                )
 
-            # Sync to ChromaDB vector store
-            self.vector_store.upsert_page(
-                file_path=enhanced_path,
-                text=full_text,
-                category=doc_category,
-                title=title
-            )
+                # Sync to vector store
+                self.vector_store.upsert_page(
+                    file_path=enhanced_path,
+                    text=full_text,
+                    category=doc_category,
+                    title=title
+                )
 
-            # Save readable text export
-            txt_filename = os.path.splitext(os.path.basename(enhanced_path))[0] + ".txt"
-            txt_path = os.path.join(output_text_dir, txt_filename)
-            with open(txt_path, "w", encoding="utf-8") as f:
-                f.write(f"=== DOCUMENT METADATA ===\n")
-                f.write(f"Source Page: {enhanced_path}\n")
-                f.write(f"Category: {doc_category}\n")
-                f.write(f"Title / Subject: {title}\n")
-                f.write(f"Validation: {validation_status}\n\n")
-                f.write(f"=== STRUCTURED DATA (JSON) ===\n")
-                f.write(json.dumps(structured_data, indent=2, ensure_ascii=False))
-                f.write(f"\n\n=== FULL TRANSCRIPTION ===\n")
-                f.write(full_text)
+                # Save readable text export
+                txt_filename = os.path.splitext(os.path.basename(enhanced_path))[0] + ".txt"
+                txt_path = os.path.join(output_text_dir, txt_filename)
+                with open(txt_path, "w", encoding="utf-8") as f:
+                    f.write(f"=== DOCUMENT METADATA ===\n")
+                    f.write(f"Source Page: {enhanced_path}\n")
+                    f.write(f"Category: {doc_category}\n")
+                    f.write(f"Title / Subject: {title}\n")
+                    f.write(f"Validation: {validation_status}\n\n")
+                    f.write(f"=== STRUCTURED DATA (JSON) ===\n")
+                    f.write(json.dumps(structured_data, indent=2, ensure_ascii=False))
+                    f.write(f"\n\n=== FULL TRANSCRIPTION ===\n")
+                    f.write(full_text)
 
-            processed_count += 1
+                processed_count += 1
+            except Exception as page_err:
+                import traceback
+                print(f"[IngestionWorker] ❌ Error processing Page {idx}/{total_pages}: {page_err}")
+                traceback.print_exc()
 
         elapsed = time.time() - t0
-        print(f"[IngestionWorker] ✅ Ingestion complete for '{filename}' in {elapsed:.2f}s!")
+        print(f"[IngestionWorker] ✅ Ingestion finished for '{filename}' ({processed_count}/{total_pages} pages) in {elapsed:.2f}s!")
 
         if recipient_number:
-            done_msg = (
-                f"✅ *Dokumen Berhasil Diindeks!*\n\n"
-                f"📁 *File:* `{filename}`\n"
-                f"📄 *Total Halaman:* {total_pages} halaman\n"
-                f"⏱️ *Waktu Proses:* {elapsed:.1f} detik\n\n"
-                f"💡 _Sekarang Anda bisa langsung mencari dokumen ini dengan:_ \n"
-                f"• `cari: {os.path.splitext(filename)[0]}`\n"
-                f"• Atau ajukan pertanyaan langsung mengenai isi dokumen ini!"
-            )
+            if processed_count > 0:
+                done_msg = (
+                    f"✅ *Dokumen Berhasil Diindeks!*\n\n"
+                    f"📁 *File:* `{filename}`\n"
+                    f"📄 *Berhasil Diindeks:* {processed_count} dari {total_pages} halaman\n"
+                    f"⏱️ *Waktu Proses:* {elapsed:.1f} detik\n\n"
+                    f"💡 _Sekarang Anda bisa langsung mencari dokumen ini dengan:_ \n"
+                    f"• `cari: {os.path.splitext(filename)[0]}`\n"
+                    f"• Atau ajukan pertanyaan langsung mengenai isi dokumen ini!"
+                )
+            else:
+                done_msg = (
+                    f"⚠️ Gagal mengekstrak isi dokumen `{filename}`.\n"
+                    f"Mohon periksa log atau pastikan dokumen dapat dibaca dengan jelas."
+                )
             self.wa.send_text_message(recipient_number, done_msg)
 
         return {

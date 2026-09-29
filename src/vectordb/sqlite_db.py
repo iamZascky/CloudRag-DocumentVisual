@@ -122,3 +122,12 @@ class SqliteDocDatabase:
         """, (file_path,)).fetchone()
         conn.close()
         return dict(row) if row else None
+
+    def get_all_documents(self) -> List[Dict]:
+        conn = self.get_connection()
+        rows = conn.execute("""
+            SELECT id, file_path, doc_category, title_or_subject, created_at
+            FROM documents ORDER BY id DESC
+        """).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
