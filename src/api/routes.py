@@ -302,7 +302,7 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
             f"{answer}\n\n"
             f"─────────────────────\n"
             f"📄 *Halaman Referensi Utama:* `{os.path.basename(target_page)}`\n"
-            f"🤖 _Dianalisis oleh Qwen2.5-VL Multi-Page Visual RAG_"
+            f"🤖 _Dianalisis oleh Cloud Gemini 2.0 Flash Visual RAG_"
         )
         send_res = client.send_text_message(sender_number, final_reply)
         print(f"[WhatsApp Bot] 📤 Send response status: {send_res}")

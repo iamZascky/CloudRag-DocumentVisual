@@ -1,3 +1,3 @@
-from .llm_client import QwenVisualReader
+from .gemini_client import GeminiVisualReader
 
-__all__ = ["QwenVisualReader"]
+__all__ = ["GeminiVisualReader"]
