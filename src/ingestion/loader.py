@@ -65,6 +65,8 @@ def render_pdf(pdf_path: str, dpi: int = DEFAULT_DPI, output_dir: Optional[str] 
         return output_paths
     except ImportError:
         pass
+    except Exception as pdfium_err:
+        print(f"[PDF Loader] pypdfium2 rendering error: {pdfium_err}")
 
     # Method 3: Fallback to PyMuPDF (fitz)
     try:
@@ -80,9 +82,11 @@ def render_pdf(pdf_path: str, dpi: int = DEFAULT_DPI, output_dir: Optional[str] 
         return output_paths
     except ImportError:
         pass
+    except Exception as fitz_err:
+        print(f"[PDF Loader] PyMuPDF rendering error: {fitz_err}")
 
     raise RuntimeError(
-        "No PDF renderer found. Install Poppler or run: pip install pypdfium2"
+        "No PDF renderer found or all renderers failed. Install pypdfium2 or PyMuPDF."
     )
 
 def enhance_scan(image_path: str, output_dir: Optional[str] = None) -> str:
