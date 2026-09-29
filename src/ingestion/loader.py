@@ -1,5 +1,17 @@
 import os
-import cv2
+import sys
+
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENCV_CPU_MAX_THREADS"] = "1"
+
+try:
+    import cv2
+    cv2.setNumThreads(1)
+except Exception:
+    cv2 = None
+
 import numpy as np
 from typing import List, Optional
 from src.utils.helpers import load_config

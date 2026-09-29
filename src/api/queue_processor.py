@@ -1,12 +1,14 @@
 import os
 import sys
 
-# Limit OpenBLAS / NumPy / OpenMP threads to 1 to stay safely within cPanel nproc limit (40)
+# Limit OpenBLAS / OpenCV / NumPy / OpenMP threads to 1 to stay safely within cPanel nproc limit (40)
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["OPENCV_FORBID_ONLY_PTHREADS_USAGE"] = "1"
+os.environ["OPENCV_CPU_MAX_THREADS"] = "1"
 os.environ["AI_MODE"] = os.getenv("AI_MODE", "cloud")
 
 import glob

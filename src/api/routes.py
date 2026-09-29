@@ -12,10 +12,6 @@ os.environ["AI_MODE"] = os.getenv("AI_MODE", "cloud")
 from fastapi import FastAPI, HTTPException, Request, Response, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
-from src.retrieval.retriever import HybridRetriever
-from src.vectordb.sqlite_db import SqliteDocDatabase
-from src.vectordb.vector_store import ChromaVectorStore
-from src.ingestion.worker import IngestionWorker
 from src.utils.helpers import StructuredQAResponse
 from src.api.whatsapp import WhatsAppClient
 import time
@@ -33,9 +29,10 @@ _vector_store = None
 _whatsapp_client = None
 _ingestion_worker = None
 
-def get_retriever() -> HybridRetriever:
+def get_retriever():
     global _retriever
     if _retriever is None:
+        from src.retrieval.retriever import HybridRetriever
         _retriever = HybridRetriever()
     return _retriever
 
@@ -67,15 +64,17 @@ def get_reader():
                 _reader = GeminiVisualReader(api_key=gemini_key)
     return _reader
 
-def get_sqlite_db() -> SqliteDocDatabase:
+def get_sqlite_db():
     global _sqlite_db
     if _sqlite_db is None:
+        from src.vectordb.sqlite_db import SqliteDocDatabase
         _sqlite_db = SqliteDocDatabase()
     return _sqlite_db
 
-def get_vector_store() -> ChromaVectorStore:
+def get_vector_store():
     global _vector_store
     if _vector_store is None:
+        from src.vectordb.vector_store import ChromaVectorStore
         _vector_store = ChromaVectorStore()
     return _vector_store
 
@@ -88,9 +87,10 @@ def get_whatsapp_client() -> WhatsAppClient:
         verify_token=os.getenv("WHATSAPP_VERIFY_TOKEN", "docuvisual_secret_token_2026")
     )
 
-def get_ingestion_worker() -> IngestionWorker:
+def get_ingestion_worker():
     global _ingestion_worker
     if _ingestion_worker is None:
+        from src.ingestion.worker import IngestionWorker
         _ingestion_worker = IngestionWorker(
             reader=get_reader(),
             sqlite_db=get_sqlite_db(),
