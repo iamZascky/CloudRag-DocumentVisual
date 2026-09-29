@@ -1,96 +1,140 @@
 import os
 import sys
-
-# Limit OpenBLAS / NumPy / OpenMP threads to 1 to stay safely within cPanel nproc limit (40)
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-
+import json
+import math
+import sqlite3
 from typing import List, Dict, Optional, Set
-import chromadb
 from src.embeddings.embedder import MultilingualE5Embedder
 from src.utils.helpers import load_config
 
 config = load_config()
-CHROMA_DIR = os.path.abspath(config.get("storage", {}).get("chroma_db", "./storage/chroma"))
+STORAGE_DIR = os.path.abspath(config.get("storage", {}).get("vector_db", "./storage/vectors"))
 
-class ChromaVectorStore:
+def cosine_similarity(v1: List[float], v2: List[float]) -> float:
+    """Computes cosine similarity between two float vectors in pure Python."""
+    if not v1 or not v2 or len(v1) != len(v2):
+        return 0.0
+    dot_product = sum(a * b for a, b in zip(v1, v2))
+    norm_a = math.sqrt(sum(a * a for a in v1))
+    norm_b = math.sqrt(sum(b * b for b in v2))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot_product / (norm_a * norm_b)
+
+class PureVectorStore:
     """
-    Manages vector database operations using ChromaDB.
+    Lightweight, 100% thread-safe Vector Store using SQLite and pure Python Cosine Similarity.
+    Zero C++ threading (no ChromaDB/HNSW thread explosion).
+    Perfect for CloudLinux Shared Hosting (nproc strictly 1).
     """
-    def __init__(self, persist_dir: str = CHROMA_DIR, embedder: Optional[MultilingualE5Embedder] = None):
-        self.persist_dir = persist_dir
-        os.makedirs(self.persist_dir, exist_ok=True)
-        self.client = chromadb.PersistentClient(path=self.persist_dir)
-        self.collection = self.client.get_or_create_collection(
-            name="doc_pages_e5",
-            metadata={"hnsw:space": "cosine", "hnsw:num_threads": 1}
-        )
+    def __init__(self, db_path: Optional[str] = None, embedder: Optional[MultilingualE5Embedder] = None):
+        if db_path is None:
+            os.makedirs(STORAGE_DIR, exist_ok=True)
+            self.db_path = os.path.join(STORAGE_DIR, "vectors_pure.db")
+        else:
+            self.db_path = db_path
+            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+
         self.embedder = embedder or MultilingualE5Embedder()
+        self._init_db()
+
+    def _get_connection(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _init_db(self):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS page_vectors (
+            id TEXT PRIMARY KEY,
+            file_path TEXT UNIQUE,
+            doc_category TEXT,
+            title TEXT,
+            snippet TEXT,
+            embedding_json TEXT
+        );
+        """)
+        conn.commit()
+        conn.close()
 
     def upsert_page(self, file_path: str, text: str, category: str, title: str):
         norm_path = os.path.normpath(file_path)
         content_to_embed = f"{title}\n{text}".strip()
         embedding = self.embedder.embed_passages([content_to_embed])[0]
         snippet = text[:1500] if text else ""
-        
-        self.collection.upsert(
-            ids=[norm_path],
-            embeddings=[embedding],
-            documents=[snippet],
-            metadatas=[{
-                "file_path": norm_path,
-                "doc_category": category or "OTHER",
-                "title": title or "Unknown Title"
-            }]
-        )
+        embedding_str = json.dumps(embedding)
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO page_vectors (id, file_path, doc_category, title, snippet, embedding_json)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            file_path=excluded.file_path,
+            doc_category=excluded.doc_category,
+            title=excluded.title,
+            snippet=excluded.snippet,
+            embedding_json=excluded.embedding_json;
+        """, (norm_path, norm_path, category or "OTHER", title or "Unknown Title", snippet, embedding_str))
+        conn.commit()
+        conn.close()
 
     def search(self, query: str, limit: int = 10) -> List[Dict]:
-        count = self.collection.count()
-        if count == 0:
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT file_path, doc_category, title, snippet, embedding_json FROM page_vectors")
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
             return []
-            
+
         query_embedding = self.embedder.embed_query(query)
-        n_results = min(limit, count)
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=n_results,
-            include=["metadatas", "distances", "documents"]
-        )
-        
-        output = []
-        if results and results.get("ids") and len(results["ids"]) > 0:
-            ids = results["ids"][0]
-            metadatas = results["metadatas"][0] if results.get("metadatas") else []
-            distances = results["distances"][0] if results.get("distances") else []
-            documents = results["documents"][0] if results.get("documents") else []
-            
-            for idx, doc_id in enumerate(ids):
-                meta = metadatas[idx] if idx < len(metadatas) else {}
-                dist = distances[idx] if idx < len(distances) else 1.0
-                doc_text = documents[idx] if idx < len(documents) else ""
-                similarity = max(0.0, 1.0 - dist)
-                
-                output.append({
-                    "file_path": meta.get("file_path", doc_id),
-                    "doc_category": meta.get("doc_category", "OTHER"),
-                    "title": meta.get("title", ""),
-                    "similarity": round(similarity, 4),
-                    "snippet": doc_text[:200]
+        scored_results = []
+
+        for row in rows:
+            try:
+                emb = json.loads(row["embedding_json"])
+                sim = cosine_similarity(query_embedding, emb)
+                scored_results.append({
+                    "file_path": row["file_path"],
+                    "doc_category": row["doc_category"] or "OTHER",
+                    "title": row["title"] or "",
+                    "similarity": round(max(0.0, sim), 4),
+                    "snippet": (row["snippet"] or "")[:200]
                 })
-        return output
+            except Exception:
+                continue
+
+        # Sort descending by similarity
+        scored_results.sort(key=lambda x: x["similarity"], reverse=True)
+        return scored_results[:limit]
 
     def count(self) -> int:
-        return self.collection.count()
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM page_vectors")
+        cnt = cursor.fetchone()[0]
+        conn.close()
+        return cnt
 
     def get_indexed_paths(self) -> Set[str]:
-        data = self.collection.get(include=[])
-        if data and "ids" in data:
-            return set(data["ids"])
-        return set()
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT file_path FROM page_vectors")
+        paths = {row[0] for row in cursor.fetchall()}
+        conn.close()
+        return paths
 
     def delete_page(self, file_path: str):
         norm_path = os.path.normpath(file_path)
-        self.collection.delete(ids=[norm_path])
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM page_vectors WHERE id = ?", (norm_path,))
+        conn.commit()
+        conn.close()
+
+# Backward-compatibility alias
+ChromaVectorStore = PureVectorStore
