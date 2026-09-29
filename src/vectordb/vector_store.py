@@ -26,7 +26,7 @@ class ChromaVectorStore:
         self.client = chromadb.PersistentClient(path=self.persist_dir)
         self.collection = self.client.get_or_create_collection(
             name="doc_pages_e5",
-            metadata={"hnsw:space": "cosine"}
+            metadata={"hnsw:space": "cosine", "hnsw:num_threads": 1}
         )
         self.embedder = embedder or MultilingualE5Embedder()
 

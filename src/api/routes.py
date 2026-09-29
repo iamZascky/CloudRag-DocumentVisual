@@ -183,8 +183,13 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
 
         # Cek apakah pengguna mengirim salam / meminta menu bantuan
         clean_text = question.strip().lower()
-        greeting_keywords = ["halo", "hai", "hi", "hey", "p", "menu", "help", "bantuan", "info", "mulai", "start"]
-        if clean_text in greeting_keywords:
+        greeting_keywords = [
+            "halo", "hallo", "hello", "hai", "hi", "hey", "p", 
+            "menu", "help", "bantuan", "info", "mulai", "start",
+            "tes", "test", "ping", "assalamualaikum", "selamat"
+        ]
+        is_greeting = any(clean_text == kw or clean_text.startswith(kw + " ") for kw in greeting_keywords)
+        if is_greeting:
             welcome_msg = (
                 "👋 *Halo! Selamat datang di Bot Asisten Dokumen Visual.*\n\n"
                 "Saya dapat membantu Anda mencari dan menganalisis arsip dokumen/kwitansi secara cerdas.\n\n"
