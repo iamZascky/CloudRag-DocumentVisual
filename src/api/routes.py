@@ -273,22 +273,47 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
 
         # 2. Gather multi-page context and smart primary page selection
         context_blocks = []
-        primary_idx = 0
+        best_primary_idx = 0
+        best_score = -1
+
         for rank_idx, doc in enumerate(results):
             doc_path = doc["file_path"]
-            base_name = os.path.basename(doc_path)
+            base_name = os.path.basename(doc_path).lower()
             doc_details = db.get_document_by_path(doc_path)
+            
+            score = 0
+            # Prioritize page 1 (cover / nota dinas / summary table)
+            if "page_1" in base_name or "hal_1" in base_name:
+                score += 15
+
             if doc_details and doc_details.get("full_transcription"):
                 transcription = doc_details["full_transcription"]
-                context_blocks.append(f"--- [PAGE {rank_idx+1}: {base_name}] ---\n{transcription[:1200]}")
-                if primary_idx == 0 and any(kw in transcription.lower() for kw in ["permohonan pencairan", "kode rekening", "rekapitulasi", "belanja bahan bakar"]):
-                    primary_idx = rank_idx
+                lower_trans = transcription.lower()
+                context_blocks.append(f"--- [PAGE {rank_idx+1}: {os.path.basename(doc_path)}] ---\n{transcription[:1500]}")
+                
+                # Check for critical financial summary terms
+                for kw, kw_weight in [
+                    ("permohonan pencairan", 20),
+                    ("nota dinas", 15),
+                    ("rekapitulasi", 12),
+                    ("jumlah permohonan", 15),
+                    ("belanja bahan bakar", 10),
+                    ("kode rekening", 8),
+                    ("grand total", 10),
+                    ("total", 5)
+                ]:
+                    if kw in lower_trans:
+                        score += kw_weight
+
+            if score > best_score:
+                best_score = score
+                best_primary_idx = rank_idx
 
         multi_page_context = "\n\n".join(context_blocks)
-        target_page = results[primary_idx]["file_path"]
-        print(f"[WhatsApp Bot] 📄 Primary document selected: {os.path.basename(target_page)}")
+        target_page = results[best_primary_idx]["file_path"]
+        print(f"[WhatsApp Bot] 📄 Primary document selected: {os.path.basename(target_page)} (score: {best_score})")
 
-        # 3. Generate answer via Qwen2.5-VL
+        # 3. Generate answer via Vision AI
         answer = reader.answer_question(
             image_path=target_page,
             question=question,
