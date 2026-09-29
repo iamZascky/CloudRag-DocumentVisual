@@ -76,5 +76,18 @@ def process_queue():
             except Exception:
                 pass
 
+def run_loop():
+    """
+    Runs an intelligent 50-second loop per cron invocation.
+    Checks the queue every 2 seconds, delivering near-instant (2-3s) WhatsApp replies
+    without exceeding CloudLinux process limits. Exits cleanly before the next cron minute.
+    """
+    start_time = time.time()
+    max_duration = 50  # Run for 50 seconds, then exit gracefully
+
+    while time.time() - start_time < max_duration:
+        process_queue()
+        time.sleep(2)
+
 if __name__ == "__main__":
-    process_queue()
+    run_loop()
