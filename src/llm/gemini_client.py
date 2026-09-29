@@ -16,10 +16,11 @@ class GeminiVisualReader:
     Ideal for Shared Hosting (cPanel), Cloud VPS, and low-spec environments.
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash"):
+    def __init__(self, api_key: Optional[str] = None, model: str = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "")
-        self.model = model
-        self.base_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+        # Allow override via GEMINI_MODEL env var or default to stable models
+        self.model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self.candidate_models = [self.model, "gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-flash-latest"]
 
     def _encode_image(self, image_path: str) -> Dict[str, str]:
         """Encodes local image into base64 for Gemini REST payload."""
@@ -39,7 +40,7 @@ class GeminiVisualReader:
         }
 
     def _call_gemini_api(self, prompt: str, image_path: Optional[str] = None) -> str:
-        """Executes HTTP request to Gemini REST API."""
+        """Executes HTTP request to Gemini REST API with model fallback."""
         if not self.api_key:
             raise ValueError(
                 "GEMINI_API_KEY is not set. Please set GEMINI_API_KEY in your .env file."
@@ -62,24 +63,32 @@ class GeminiVisualReader:
             }
         }
 
-        url = f"{self.base_url}?key={self.api_key}"
         headers = {"Content-Type": "application/json"}
+        last_err = None
 
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
-        if response.status_code != 200:
-            raise RuntimeError(f"Gemini API Error {response.status_code}: {response.text}")
+        # Try candidate models in order (e.g. gemini-2.5-flash -> gemini-1.5-flash)
+        models_to_try = list(dict.fromkeys(self.candidate_models))
+        for m in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={self.api_key}"
+            try:
+                response = requests.post(url, headers=headers, json=payload, timeout=35)
+                if response.status_code == 200:
+                    self.model = m  # Keep the working model
+                    res_json = response.json()
+                    candidates = res_json.get("candidates", [])
+                    if candidates:
+                        content = candidates[0].get("content", {})
+                        parts_resp = content.get("parts", [])
+                        if parts_resp:
+                            return parts_resp[0].get("text", "").strip()
+                    return ""
+                else:
+                    last_err = f"Gemini API Error {response.status_code} on {m}: {response.text}"
+                    print(f"[GeminiClient] Model '{m}' returned {response.status_code}, trying next model...")
+            except Exception as req_err:
+                last_err = str(req_err)
 
-        res_json = response.json()
-        try:
-            candidates = res_json.get("candidates", [])
-            if candidates:
-                content = candidates[0].get("content", {})
-                parts = content.get("parts", [])
-                if parts:
-                    return parts[0].get("text", "").strip()
-            return ""
-        except (IndexError, KeyError) as e:
-            raise RuntimeError(f"Failed to parse Gemini response: {e}")
+        raise RuntimeError(f"All Gemini models failed. Last error: {last_err}")
 
     def _clean_and_parse_json(self, raw_output: str) -> dict:
         """Robust parser for JSON output."""
