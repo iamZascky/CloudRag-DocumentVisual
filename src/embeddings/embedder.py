@@ -65,7 +65,7 @@ class MultilingualE5Embedder:
         
         # If in cloud mode or torch is absent, use GeminiCloudEmbedder
         if ai_mode == "cloud" or gemini_key:
-            print("[Embedder] ☁️ Using lightweight GeminiCloudEmbedder (Zero torch/RAM)...")
+            print("[Embedder] [Cloud] Using lightweight GeminiCloudEmbedder (Zero torch/RAM)...")
             self._backend = GeminiCloudEmbedder(api_key=gemini_key)
         else:
             try:

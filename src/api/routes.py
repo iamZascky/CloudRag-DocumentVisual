@@ -51,12 +51,12 @@ def get_reader():
         # Always default to cloud mode on hosting or when Gemini key exists
         if ai_mode != "local" or gemini_key:
             from src.llm.gemini_client import GeminiVisualReader
-            print("[LLM Factory] ☁️ Initializing Cloud GeminiVisualReader (Zero GPU/Torch)...")
+            print("[LLM Factory] [Cloud] Initializing Cloud GeminiVisualReader (Zero GPU/Torch)...")
             _reader = GeminiVisualReader(api_key=gemini_key)
         else:
             try:
                 from src.llm.llm_client import QwenVisualReader
-                print("[LLM Factory] 🖥️ Initializing Local QwenVisualReader (GPU BF16)...")
+                print("[LLM Factory] [Local] Initializing Local QwenVisualReader (GPU BF16)...")
                 _reader = QwenVisualReader()
             except Exception as e:
                 from src.llm.gemini_client import GeminiVisualReader
