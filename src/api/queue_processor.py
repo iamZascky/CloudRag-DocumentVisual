@@ -19,10 +19,12 @@ import json
 import time
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.abspath(os.path.join(CURRENT_DIR, "../..")))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../.."))
+sys.path.insert(0, PROJECT_ROOT)
+os.chdir(PROJECT_ROOT)
 
 from dotenv import load_dotenv
-load_dotenv(os.path.join(CURRENT_DIR, "../../.env"))
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
 from src.api.whatsapp import WhatsAppClient
 from src.api.routes import process_and_reply_whatsapp, process_incoming_media, get_whatsapp_client
