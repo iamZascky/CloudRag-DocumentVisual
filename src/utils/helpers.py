@@ -4,14 +4,23 @@ from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field, ValidationError
 
 CONFIG_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../config.yaml"))
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 
 def load_config(config_path: Optional[str] = None) -> dict:
-    """Loads configuration from YAML file."""
+    """Loads configuration from YAML file and normalizes relative paths to PROJECT_ROOT."""
     path = config_path or CONFIG_PATH
+    cfg = {}
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
-    return {}
+            cfg = yaml.safe_load(f) or {}
+
+    # Anchor any relative storage paths to PROJECT_ROOT
+    if "storage" in cfg and isinstance(cfg["storage"], dict):
+        for k, v in cfg["storage"].items():
+            if isinstance(v, str) and v.startswith("."):
+                cfg["storage"][k] = os.path.abspath(os.path.join(PROJECT_ROOT, v))
+
+    return cfg
 
 class ReceiptStructuredData(BaseModel):
     items: list[dict] = Field(default_factory=list)

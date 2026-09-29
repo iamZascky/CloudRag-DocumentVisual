@@ -72,7 +72,9 @@ class IngestionWorker:
             )
 
         processed_count = 0
-        output_text_dir = os.path.abspath("./storage/outputtext")
+        from src.utils.helpers import load_config
+        cfg = load_config()
+        output_text_dir = cfg.get("storage", {}).get("output_text_dir", os.path.abspath("./storage/outputtext"))
         os.makedirs(output_text_dir, exist_ok=True)
 
         for idx, img_path in enumerate(image_paths, start=1):

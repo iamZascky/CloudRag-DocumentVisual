@@ -325,7 +325,9 @@ def process_incoming_media(sender_number: str, media_id: str, filename: str, mim
             f"📥 *Menerima Dokumen:*\n`{filename}`\n\nSedang mengunduh dan menyiapkan proses ekstraksi visual..."
         )
 
-        data_dir = os.path.abspath("./data")
+        # Save to repo's data directory
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+        data_dir = os.path.join(project_root, "data")
         os.makedirs(data_dir, exist_ok=True)
         save_path = os.path.join(data_dir, filename)
 
