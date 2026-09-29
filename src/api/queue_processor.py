@@ -23,7 +23,8 @@ from src.api.whatsapp import WhatsAppClient
 from src.api.routes import process_and_reply_whatsapp, process_incoming_media, get_whatsapp_client
 
 def process_queue():
-    queue_dir = os.path.abspath("./storage/queue")
+    project_root = os.path.abspath(os.path.join(CURRENT_DIR, "../.."))
+    queue_dir = os.path.join(project_root, "storage", "queue")
     if not os.path.exists(queue_dir):
         return
 
