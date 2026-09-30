@@ -388,11 +388,23 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
 
         multi_page_context = "\n\n".join(context_blocks)
         target_page = results[best_primary_idx]["file_path"]
-        print(f"[WhatsApp Bot] 📄 Primary document selected: {os.path.basename(target_page)} (score: {best_score})")
 
-        # 3. Generate answer via Vision AI
+        # Collect top-3 unique image pages for direct visual inspection by Gemini
+        selected_images = [target_page]
+        for doc in results:
+            p = doc["file_path"]
+            if p not in selected_images and os.path.exists(p):
+                selected_images.append(p)
+            if len(selected_images) >= 3:
+                break
+
+        print(f"[WhatsApp Bot] 📄 Primary document selected: {os.path.basename(target_page)} (score: {best_score})")
+        print(f"[WhatsApp Bot] 👁️ Multi-Image Visual Inspection: {[os.path.basename(x) for x in selected_images]}")
+
+        # 3. Generate answer via Vision AI with Multi-Image Visual Grounding
         answer = reader.answer_question(
             image_path=target_page,
+            image_paths=selected_images,
             question=question,
             stream=False,
             context_text=multi_page_context
@@ -400,11 +412,12 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
         print(f"[WhatsApp Bot] 💡 Answer generated:\n{answer}")
 
         # 4. Send reply back to user with source attribution
+        refs_str = ", ".join([f"`{os.path.basename(p)}`" for p in selected_images])
         final_reply = (
             f"{answer}\n\n"
             f"─────────────────────\n"
-            f"📄 *Halaman Referensi Utama:* `{os.path.basename(target_page)}`\n"
-            f"🤖 _Dianalisis oleh Cloud Gemini 2.0 Flash Visual RAG_"
+            f"📄 *Halaman Referensi Visual:* {refs_str}\n"
+            f"🤖 _Dianalisis oleh Cloud Gemini 2.5 Flash Multi-Image Visual RAG_"
         )
         send_res = client.send_text_message(sender_number, final_reply)
         print(f"[WhatsApp Bot] 📤 Send response status: {send_res}")

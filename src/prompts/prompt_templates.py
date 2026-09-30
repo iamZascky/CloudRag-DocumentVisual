@@ -19,29 +19,32 @@ DOCUMENT_EXTRACTION_PROMPT = (
 )
 
 def format_qa_prompt(question: str) -> str:
-    """Formats visual question answering prompt."""
+    """Formats visual question answering prompt with strict factuality."""
     return (
-        f"Examine this document image and answer the question accurately based on the visible content.\n\n"
-        f"Question: {question}\n\n"
-        "Requirements:\n"
-        "- Provide a complete and informative answer in clear Indonesian/English.\n"
-        "- State the final total or amount clearly with currency/units (e.g. Rp ..., Liter).\n"
-        "- If the document shows sub-totals, items, or breakdowns, summarize them clearly.\n"
-        "- Do not guess numbers not visible in the document."
+        f"You are a strict, professional Document Auditor. Examine the provided document image carefully.\n\n"
+        f"User Question: {question}\n\n"
+        "STRICT AUDITING RULES (ZERO HALLUCINATION):\n"
+        "1. GROUNDING: Answer strictly based on what is visibly written in the document.\n"
+        "2. NO GUESSING & NO MATH: Do NOT multiply, extrapolate, or invent quantities or totals that are not explicitly stated in the document.\n"
+        "3. GRAND TOTALS: If a summary table or 'Jumlah Permohonan Pencairan' / 'Grand Total' exists, state that exact nominal figure clearly (Rp ...).\n"
+        "4. MISSING INFO: If the requested information is not present on this page, clearly state: 'Informasi tersebut tidak tertera pada dokumen ini.'\n"
+        "5. Language: Provide a clear, polite, and well-formatted answer in Indonesian."
     )
 
 def format_multi_page_qa_prompt(question: str, context_text: str) -> str:
-    """Formats multi-page visual question answering prompt with cross-page transcription context."""
+    """Formats multi-page visual question answering prompt with strict anti-hallucination guidelines."""
     return (
-        f"Examine this primary document image alongside the verified text transcriptions from other relevant retrieved pages of the document set.\n\n"
-        f"Context from related retrieved pages:\n"
-        f"```\n{context_text}\n```\n\n"
-        f"Question: {question}\n\n"
-        "Instructions:\n"
-        "- If a summary table or grand total is present (such as total belanja/permohonan pencairan), prioritize and state the overall total clearly.\n"
-        "- Provide a structured breakdown where appropriate (e.g., period breakdown, category amounts, or receipt volumes).\n"
-        "- State all monetary amounts with currency (Rp) and volume units (Liter).\n"
-        "- Answer politely, clearly, and concisely based strictly on the factual evidence provided."
+        f"You are an expert Document Auditor. You are provided with the visual document pages alongside verified text transcriptions from other relevant pages in this archive.\n\n"
+        f"=== TRANSCRIPTION CONTEXT FROM RETRIEVED PAGES ===\n"
+        f"{context_text}\n"
+        f"==================================================\n\n"
+        f"User Question: {question}\n\n"
+        "STRICT AUDITING RULES (ZERO HALLUCINATION):\n"
+        "1. GRAND TOTAL PRIORITY: When asked for overall expenditure, total belanja, or total pencairan, ALWAYS look for the executive summary table (e.g. 'NOTA DINAS', 'Jumlah Permohonan Pencairan', or 'Grand Total') and quote that official figure first.\n"
+        "2. NO ARBITRARY MATH: NEVER multiply rows yourself (e.g. do NOT say '33 x 478.500 = ...') unless that exact calculation and total are explicitly printed on the page.\n"
+        "3. STRUCTURED BREAKDOWN: If the user asks for details, provide the exact breakdown as listed (e.g. Periode 1, Periode 2, Roda 2, Roda 4).\n"
+        "4. CURRENCY & CITATION: Always use proper Indonesian formatting (Rp ...). Mention which page or section the numbers come from.\n"
+        "5. Language: Answer politely, clearly, and concisely in Indonesian."
     )
 
 def format_structured_qa_prompt(question: str) -> str:

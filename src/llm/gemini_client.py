@@ -39,16 +39,30 @@ class GeminiVisualReader:
             }
         }
 
-    def _call_gemini_api(self, prompt: str, image_path: Optional[str] = None) -> str:
-        """Executes HTTP request to Gemini REST API with model fallback."""
+    def _call_gemini_api(
+        self,
+        prompt: str,
+        image_path: Optional[str] = None,
+        image_paths: Optional[List[str]] = None
+    ) -> str:
+        """Executes HTTP request to Gemini REST API supporting multiple image inputs."""
         if not self.api_key:
             raise ValueError(
                 "GEMINI_API_KEY is not set. Please set GEMINI_API_KEY in your .env file."
             )
 
         parts = []
-        if image_path and os.path.exists(image_path):
-            parts.append(self._encode_image(image_path))
+        # Support multiple images or single image
+        targets = []
+        if image_paths:
+            targets.extend(image_paths)
+        elif image_path:
+            targets.append(image_path)
+
+        for img in targets:
+            if img and os.path.exists(img):
+                parts.append(self._encode_image(img))
+
         parts.append({"text": prompt})
 
         payload = {
@@ -132,19 +146,20 @@ class GeminiVisualReader:
 
     def answer_question(
         self,
-        image_path: str,
-        question: str,
+        image_path: str = None,
+        question: str = "",
         max_new_tokens: int = 1024,
         stream: bool = False,
-        context_text: str = ""
+        context_text: str = "",
+        image_paths: Optional[List[str]] = None
     ) -> str:
-        """Answers visual question with optional cross-page context."""
+        """Answers visual question with optional cross-page context and multi-image inspection."""
         if context_text:
             prompt = format_multi_page_qa_prompt(question, context_text)
         else:
             prompt = format_qa_prompt(question)
 
-        return self._call_gemini_api(prompt, image_path=image_path)
+        return self._call_gemini_api(prompt, image_path=image_path, image_paths=image_paths)
 
     def answer_question_structured(
         self,
