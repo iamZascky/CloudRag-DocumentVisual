@@ -131,3 +131,13 @@ class SqliteDocDatabase:
         """).fetchall()
         conn.close()
         return [dict(row) for row in rows]
+
+    def clear_all(self) -> int:
+        """Deletes all documents and FTS index records. Returns count of deleted documents."""
+        conn = self.get_connection()
+        count = conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+        conn.execute("DELETE FROM documents")
+        conn.execute("DELETE FROM fts_documents")
+        conn.commit()
+        conn.close()
+        return count

@@ -136,5 +136,16 @@ class PureVectorStore:
         conn.commit()
         conn.close()
 
+    def clear_all(self) -> int:
+        """Deletes all vector embeddings. Returns count of deleted rows."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM page_vectors")
+        cnt = cursor.fetchone()[0]
+        cursor.execute("DELETE FROM page_vectors")
+        conn.commit()
+        conn.close()
+        return cnt
+
 # Backward-compatibility alias
 ChromaVectorStore = PureVectorStore

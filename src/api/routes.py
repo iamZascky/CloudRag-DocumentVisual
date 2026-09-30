@@ -200,10 +200,87 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
                 "2. *Tanya Jawab Dokumen (AI Visual RAG):*\n"
                 "   Ketik langsung pertanyaan Anda.\n"
                 "   Contoh: `Berapa total belanja bbm di kwitansi?`\n\n"
+                "3. *Kirim Dokumen:*\n"
+                "   Langsung lampirkan file PDF / Foto di chat ini.\n\n"
+                "4. *Kelola Database:*\n"
+                "   • `/status` - Cek total dokumen terindeks\n"
+                "   • `/clear database` - Kosongkan seluruh arsip dokumen\n\n"
                 "Silakan ketik pertanyaan atau kata kunci yang ingin Anda cari!"
             )
             client.send_text_message(sender_number, welcome_msg)
             print(f"[WhatsApp Bot] 📤 Sent welcome/help menu to {sender_number}!")
+            return
+
+        # -------------------------------------------------------------
+        # Command: Status Database (/status)
+        # -------------------------------------------------------------
+        if clean_text in ["/status", "status", "!status"]:
+            db = get_sqlite_db()
+            docs = db.get_all_documents()
+            total_docs = len(docs)
+            vstore = get_vector_store()
+            total_vectors = vstore.count()
+
+            lines = [
+                "📊 *Status Database Visual RAG:*",
+                f"• Total Halaman Terindeks: *{total_docs}*",
+                f"• Total Vektor Embedding: *{total_vectors}*",
+                ""
+            ]
+            if total_docs > 0:
+                lines.append("📁 *5 Dokumen Terakhir:*")
+                for d in docs[:5]:
+                    name = os.path.basename(d.get("file_path", ""))
+                    title = d.get("title_or_subject") or "Tanpa Judul"
+                    lines.append(f"• `{name}`\n  _{title}_")
+            else:
+                lines.append("ℹ️ Database masih kosong. Kirim file PDF/foto dokumen untuk mulai mengindeks.")
+
+            client.send_text_message(sender_number, "\n".join(lines).strip())
+            return
+
+        # -------------------------------------------------------------
+        # Command: Clear / Reset Database (/clear database atau /reset db)
+        # -------------------------------------------------------------
+        if clean_text in ["/clear database", "/reset database", "/clear db", "/reset db"]:
+            print(f"[WhatsApp Bot] ⚠️ Received database clear command from {sender_number}...")
+            db = get_sqlite_db()
+            vstore = get_vector_store()
+
+            deleted_docs = db.clear_all()
+            deleted_vectors = vstore.clear_all()
+
+            # Bersihkan file fisik di storage/outputtext, storage/pages, storage/enhanced_pages, dan data/
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+            folders_to_clean = [
+                os.path.join(project_root, "storage", "outputtext"),
+                os.path.join(project_root, "storage", "pages"),
+                os.path.join(project_root, "storage", "enhanced_pages"),
+                os.path.join(project_root, "data")
+            ]
+            
+            deleted_files_count = 0
+            for folder in folders_to_clean:
+                if os.path.exists(folder):
+                    for fname in os.listdir(folder):
+                        fpath = os.path.join(folder, fname)
+                        if os.path.isfile(fpath):
+                            try:
+                                os.remove(fpath)
+                                deleted_files_count += 1
+                            except Exception:
+                                pass
+
+            msg = (
+                "🗑️ *Database & File Berhasil Dibersihkan Total!*\n\n"
+                f"• Dokumen terhapus dari DB: *{deleted_docs} halaman*\n"
+                f"• Vektor terhapus: *{deleted_vectors} record*\n"
+                f"• File gambar/teks dibersihkan: *{deleted_files_count} file*\n"
+                f"  _(Folder `pages`, `enhanced_pages`, `outputtext`, `data` bersih)_\n\n"
+                "Sekarang sistem 100% bersih. Anda dapat mengirimkan dokumen PDF/gambar baru."
+            )
+            client.send_text_message(sender_number, msg)
+            print(f"[WhatsApp Bot] 🗑️ Database cleared ({deleted_docs} docs, {deleted_vectors} vectors).")
             return
 
         # Cek apakah pengguna meminta mode pencarian cepat (search mode)
