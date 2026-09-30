@@ -119,3 +119,68 @@ Berikut adalah daftar optimasi performa dan fitur baru yang dirancang untuk meni
 | **P4** | **Fast-Path Page Pre-Filtering** | Performance | Mempercepat upload PDF tebal (> 20 halaman) |
 | **P5** | **Multi-Turn Chat History** | UX | Interaksi natural seperti ChatGPT di WhatsApp |
 
+---
+
+## 6. Arsitektur Lanjutan: LangGraph + Gemini AI untuk Agentic Visual RAG
+
+### A. Apakah LangGraph Menggantikan Gemini AI?
+**Sama sekali TIDAK.**
+- **Google Gemini 2.5 Flash**: Berfungsi sebagai **Model / Otak Visi (Vision & Reasoning Engine)** yang membaca gambar kwitansi, transkripsi tabel, dan mengekstraksi data.
+- **LangGraph**: Berfungsi sebagai **Orkestrator Alur Kerja (Workflow & Decision State Machine)** yang mengatur kapan Gemini dipanggil, kapan harus melakukan verifikasi mandiri (*self-correction*), dan kapan harus membaca halaman rekapitulasi.
+
+LangGraph terintegrasi secara native dengan Gemini melalui paket resmi `langchain-google-genai`.
+
+---
+
+### B. Keamanan Implementasi di Shared Hosting (cPanel / CloudLinux)
+LangGraph **100% AMAN** dijalankan di shared hosting dengan batasan ketat CloudLinux (`max 40 nproc`):
+1. **Pure Python**: LangGraph murni logika graph state berbasis Python standard (tanpa C++ compilation, tanpa dependensi PyTorch/CUDA).
+2. **Single-Thread Execution**: Berjalan di dalam 1 proses tunggal (`nproc: 1 / 40`, CPU 0%–2.5%).
+3. **Ukuran Ringan**: Hanya membutuhkan library modular:
+   ```bash
+   pip install langgraph langchain-core langchain-google-genai
+   ```
+   *(Menghindari instalasi paket monolitik `langchain` yang berat).*
+
+---
+
+### C. Manfaat Agentic Visual RAG dengan LangGraph
+
+Dibandingkan dengan rantai sekuensial linear biasa, LangGraph mengubah sistem menjadi alur adaptif:
+
+```
+[Inbound WA Message]
+        │
+        ▼
+   <Router Node> ──── (Smalltalk / Help) ────► [Kirim Jawaban Singkat]
+        │
+  (Document QA)
+        ▼
+[Hybrid Retrieval Node] ──► (FTS5 + Vector Cosine + RRF)
+        │
+        ▼
+<Evaluator Node>
+  ├─ Data Tidak Lengkap? ──► [Fallback Query Expansion] ──┐
+  │                                                        │ (loop)
+  └─ Data Siap                                             ▼
+        │                                         [Re-retrieve Docs]
+        ▼
+[Gemini Vision Analysis Node]
+        │
+        ▼
+<Self-Correction / Verification Node>
+  ├─ Angka tidak sinkron dengan cover nota dinas? ──► [Paksa Muat Page 1] ──┐
+  │                                                                         │ (loop)
+  └─ Angka Valid & Lengkap                                                  ▼
+        │                                                           [Re-evaluasi Gemini]
+        ▼
+[Format & Kirim Reply ke WhatsApp]
+```
+
+### D. Solusi Masalah Nyata: "Halaman 1 (Cover Rekap) vs Halaman 4 (Struk Eceran)"
+Pada arsitektur linear, jika retriever salah memilih Halaman 4 sebagai acuan visual utama, sistem akan menghasilkan subtotal parsial. 
+Dengan **LangGraph**:
+1. Node verifikasi mendeteksi bahwa user meminta *"total pencairan belanja"*, tetapi halaman acuan adalah struk eceran.
+2. Graph secara otomatis melompat ke branch pemuatan Halaman 1 (*Nota Dinas / Rekapitulasi*) tanpa perlu hardcode kaku.
+3. Menjamin jawaban grand total (contoh: `Rp 45.562.550`) selalu akurat dan terverifikasi sebelum dikirimkan ke WhatsApp pengguna.
+
