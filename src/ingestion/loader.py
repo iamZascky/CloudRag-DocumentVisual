@@ -22,7 +22,7 @@ prep_cfg = config.get("preprocessor", {})
 
 DEFAULT_PAGES_DIR = os.path.abspath(storage_cfg.get("pages_dir", "./storage/pages"))
 DEFAULT_ENHANCED_DIR = os.path.abspath(storage_cfg.get("enhanced_pages_dir", "./storage/enhanced_pages"))
-DEFAULT_DPI = prep_cfg.get("pdf_dpi", 300)
+DEFAULT_DPI = prep_cfg.get("pdf_dpi", 150)
 CLAHE_CLIP = prep_cfg.get("clahe_clip_limit", 2.0)
 CLAHE_GRID = tuple(prep_cfg.get("clahe_tile_grid_size", [8, 8]))
 
