@@ -242,7 +242,12 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
         # -------------------------------------------------------------
         # Command: Clear / Reset Database (/clear database atau /reset db)
         # -------------------------------------------------------------
-        if clean_text in ["/clear database", "/reset database", "/clear db", "/reset db"]:
+        clear_keywords = [
+            "clear database", "/clear database", "reset database", "/reset database",
+            "clear db", "/clear db", "reset db", "/reset db",
+            "hapus database", "/hapus database", "bersihkan database"
+        ]
+        if clean_text in clear_keywords:
             print(f"[WhatsApp Bot] ⚠️ Received database clear command from {sender_number}...")
             db = get_sqlite_db()
             vstore = get_vector_store()
@@ -425,6 +430,14 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
         import traceback
         print(f"[WhatsApp Bot Error] ❌ Exception: {e}")
         traceback.print_exc()
+        try:
+            client = get_whatsapp_client()
+            client.send_text_message(
+                sender_number,
+                f"⚠️ *Maaf, terjadi kendala saat memproses jawaban:*\n`{str(e)}`\n\nSilakan coba tanyakan ulang."
+            )
+        except Exception:
+            pass
 
 def process_incoming_media(sender_number: str, media_id: str, filename: str, mime_type: str, caption: str, message_id: str):
     """

@@ -43,11 +43,11 @@ class IngestionWorker:
 
         print(f"\n[IngestionWorker] 🚀 Starting ingestion for: '{filename}'...")
 
-        # 1. Render pages
+        # 1. Render pages (use 150 DPI for optimal speed and low memory on shared hosting)
         image_paths: List[str] = []
         if ext == ".pdf":
             try:
-                image_paths = render_pdf(file_path, dpi=300)
+                image_paths = render_pdf(file_path, dpi=150)
             except Exception as e:
                 err_msg = f"❌ Gagal memproses file PDF '{filename}': {str(e)}"
                 print(f"[IngestionWorker] {err_msg}")
