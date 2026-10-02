@@ -1,21 +1,26 @@
 # System and user prompt templates for Visual-RAG
 
 DOCUMENT_EXTRACTION_PROMPT = (
-    "Extract structured metadata and transcription from this document image.\n\n"
+    "You are an expert Document OCR & Archival Transcriber. Transcribe EVERYTHING visible in this document image thoroughly and exhaustively.\n\n"
+    "Output format MUST follow this exact structure:\n"
     "```json\n"
     "{\n"
     '  "doc_category": "INVOICE | RECEIPT_COLLAGE | TABLE_REPORT | OFFICIAL_LETTER | FORM | OTHER",\n'
-    '  "title_or_subject": "<string>",\n'
+    '  "title_or_subject": "<string: clear title, header, or document summary>",\n'
     '  "structured_data": {\n'
-    '    "total_amount": "<string>",\n'
-    '    "date": "<string>",\n'
-    '    "entities": "<string>"\n'
+    '    "total_amount": "<string: grand total if shown, or list of receipt totals>",\n'
+    '    "date": "<string: date or period>",\n'
+    '    "entities": "<string: agency name, vendor, station name, or operator>"\n'
     '  },\n'
     '  "has_stamps_or_signatures": false\n'
     "}\n"
     "```\n\n"
     "---TRANSCRIPTION---\n"
-    "<Markdown transcription of tables, items, and text>"
+    "# FULL VERBATIM OCR TRANSCRIPTION:\n"
+    "- Transcribe ALL visible text, headers, subheaders, and notes line-by-line.\n"
+    "- If there are receipts/struk (single or multiple on page), transcribe EVERY receipt in full: Station Name, Date/Time, Pump/Pulau, Product (e.g. PERTAMAX), Price/Liter, Volume in Liters, Total Rupiah (Rp), and Cashier/Operator.\n"
+    "- If there is a table or report, transcribe ALL rows, columns, account codes, and subtotal/total figures in Markdown table format.\n"
+    "- Do not summarize or skip items. Every single number and word must be recorded verbatim."
 )
 
 def format_qa_prompt(question: str) -> str:

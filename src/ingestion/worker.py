@@ -133,19 +133,34 @@ class IngestionWorker:
 
                 processed_count += 1
 
-                # Send milestone progress updates via WhatsApp (strictly at 25%, 50%, 75% milestones)
-                # This ensures exactly 3 progress messages whether the document has 20 pages or 1,000 pages!
-                if recipient_number and total_pages >= 10:
-                    milestones = [int(total_pages * 0.25), int(total_pages * 0.50), int(total_pages * 0.75)]
-                    if idx in milestones:
-                        progress_pct = int((idx / total_pages) * 100)
+                # Adaptive progress updates via WhatsApp:
+                # - For page 1 of multi-page docs (>= 4 pages): sends confirmation that page 1 is successfully read
+                # - For 4 to 9 pages: sends 1 update at halfway mark (50%)
+                # - For >= 10 pages: sends updates at 25%, 50%, and 75%
+                if recipient_number and total_pages >= 4:
+                    if idx == 1:
                         try:
                             self.whatsapp_client.send_text_message(
                                 recipient_number,
-                                f"⏳ *Progres Ekstraksi:* {idx}/{total_pages} halaman ({progress_pct}%)\n_Sedang membaca data visual dokumen..._"
+                                f"🚀 *Mulai Membaca Dokumen:*\nHalaman 1/{total_pages} berhasil dibaca. Melanjutkan ekstraksi halaman berikutnya..."
                             )
                         except Exception:
                             pass
+                    else:
+                        if total_pages < 10:
+                            milestones = [total_pages // 2]
+                        else:
+                            milestones = [int(total_pages * 0.25), int(total_pages * 0.50), int(total_pages * 0.75)]
+
+                        if idx in milestones:
+                            progress_pct = int((idx / total_pages) * 100)
+                            try:
+                                self.whatsapp_client.send_text_message(
+                                    recipient_number,
+                                    f"⏳ *Progres Ekstraksi:* {idx}/{total_pages} halaman ({progress_pct}%)\n_Sedang membaca data visual dokumen..._"
+                                )
+                            except Exception:
+                                pass
 
                 # Solusi 1: Pacing jeda 2.5 detik antar halaman agar tidak terkena limit 15 RPM Google Gemini
                 if idx < total_pages:

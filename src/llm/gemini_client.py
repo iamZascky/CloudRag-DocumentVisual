@@ -116,29 +116,57 @@ class GeminiVisualReader:
         raise RuntimeError(f"All Gemini models failed. Last error: {last_err}")
 
     def _clean_and_parse_json(self, raw_output: str) -> dict:
-        """Robust parser for JSON output."""
-        cleaned = re.sub(r'```json\s*', '', raw_output, flags=re.IGNORECASE)
-        cleaned = re.sub(r'```\s*', '', cleaned)
-        cleaned = cleaned.strip()
-
-        try:
-            return json.loads(cleaned)
-        except json.JSONDecodeError:
-            json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
-            if json_match:
-                try:
-                    return json.loads(json_match.group(0))
-                except json.JSONDecodeError:
-                    pass
-
-        return {
-            "doc_category": "UNKNOWN",
+        """Robust parser for extracting structured metadata and complete transcription text."""
+        result = {
+            "doc_category": "OTHER",
             "title_or_subject": "Unknown Document",
-            "full_transcription": raw_output,
             "structured_data": {},
             "has_stamps_or_signatures": False,
+            "full_transcription": "",
             "raw_output": raw_output
         }
+
+        # 1. Extract Full Transcription block
+        split_match = re.search(r"-{2,}\s*TRANSCRIPTION\s*-{0,}", raw_output, re.IGNORECASE)
+        if split_match:
+            meta_part = raw_output[:split_match.start()]
+            result["full_transcription"] = raw_output[split_match.end():].strip()
+        elif "```json" in raw_output and "```" in raw_output.split("```json", 1)[1]:
+            parts = raw_output.split("```", 2)
+            if len(parts) >= 3:
+                meta_part = parts[0] + "```" + parts[1] + "```"
+                result["full_transcription"] = parts[2].strip()
+            else:
+                meta_part = raw_output
+        else:
+            meta_part = raw_output
+            result["full_transcription"] = raw_output.strip()
+
+        # 2. Extract JSON structured metadata
+        json_match = re.search(r'```json\s*(.*?)\s*```', meta_part, re.DOTALL | re.IGNORECASE)
+        candidate = json_match.group(1).strip() if json_match else meta_part.strip()
+
+        # Look for outermost JSON object
+        brace_start = candidate.find('{')
+        brace_end = candidate.rfind('}')
+        if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
+            try:
+                parsed = json.loads(candidate[brace_start:brace_end + 1])
+                if isinstance(parsed, dict):
+                    result["doc_category"] = parsed.get("doc_category", result["doc_category"])
+                    result["title_or_subject"] = parsed.get("title_or_subject", result["title_or_subject"])
+                    result["structured_data"] = parsed.get("structured_data", {})
+                    result["has_stamps_or_signatures"] = parsed.get("has_stamps_or_signatures", False)
+                    # If full_transcription wasn't in split section, check if in JSON
+                    if not result["full_transcription"] and "full_transcription" in parsed:
+                        result["full_transcription"] = str(parsed["full_transcription"])
+            except Exception:
+                pass
+
+        if not result["full_transcription"]:
+            result["full_transcription"] = raw_output.strip()
+
+        return result
 
     def process_document(self, image_path: str) -> dict:
         """Extract structured data and full transcription via Gemini."""
