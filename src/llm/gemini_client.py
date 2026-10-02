@@ -18,9 +18,9 @@ class GeminiVisualReader:
 
     def __init__(self, api_key: Optional[str] = None, model: str = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "")
-        # Strictly use gemini-2.5-flash as confirmed working
-        self.model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-        self.candidate_models = [self.model, "gemini-2.5-flash"]
+        # Official Google instruction: use gemini-3.8-flash
+        self.model = model or os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+        self.candidate_models = [self.model, "gemini-3.8-flash"]
 
     def _encode_image(self, image_path: str) -> Dict[str, str]:
         """Encodes local image into base64 for Gemini REST payload."""
