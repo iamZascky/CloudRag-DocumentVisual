@@ -18,9 +18,9 @@ class GeminiVisualReader:
 
     def __init__(self, api_key: Optional[str] = None, model: str = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "")
-        # Allow override via GEMINI_MODEL env var or default to stable models
+        # Use active stable models (gemini-2.5-flash / gemini-1.5-flash)
         self.model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-        self.candidate_models = [self.model, "gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-flash-latest"]
+        self.candidate_models = [self.model, "gemini-2.5-flash", "gemini-1.5-flash"]
 
     def _encode_image(self, image_path: str) -> Dict[str, str]:
         """Encodes local image into base64 for Gemini REST payload."""
@@ -45,7 +45,7 @@ class GeminiVisualReader:
         image_path: Optional[str] = None,
         image_paths: Optional[List[str]] = None
     ) -> str:
-        """Executes HTTP request to Gemini REST API supporting multiple image inputs."""
+        """Executes HTTP request to Gemini REST API supporting multiple image inputs and robust retry."""
         if not self.api_key:
             raise ValueError(
                 "GEMINI_API_KEY is not set. Please set GEMINI_API_KEY in your .env file."
@@ -84,9 +84,9 @@ class GeminiVisualReader:
         models_to_try = list(dict.fromkeys(self.candidate_models))
         for m in models_to_try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={self.api_key}"
-            for attempt in range(3):
+            for attempt in range(4):  # Up to 4 attempts per model
                 try:
-                    response = requests.post(url, headers=headers, json=payload, timeout=40)
+                    response = requests.post(url, headers=headers, json=payload, timeout=45)
                     if response.status_code == 200:
                         self.model = m  # Keep the working model
                         res_json = response.json()
@@ -97,10 +97,10 @@ class GeminiVisualReader:
                             if parts_resp:
                                 return parts_resp[0].get("text", "").strip()
                         return ""
-                    elif response.status_code in [503, 429]:
-                        # Transient high-load or rate limit from Google; wait and retry
-                        wait_sec = (attempt + 1) * 2
-                        print(f"[GeminiClient] Model '{m}' returned {response.status_code}. Retrying in {wait_sec}s (attempt {attempt+1}/3)...")
+                    elif response.status_code in [429, 503]:
+                        # Rate limit (15 RPM) or temporary service overload from Google
+                        wait_sec = (attempt + 1) * 5  # 5s, 10s, 15s, 20s
+                        print(f"[GeminiClient] Model '{m}' hit status {response.status_code}. Backing off for {wait_sec}s (attempt {attempt+1}/4)...")
                         import time
                         time.sleep(wait_sec)
                         continue
@@ -110,7 +110,8 @@ class GeminiVisualReader:
                         break
                 except Exception as req_err:
                     last_err = str(req_err)
-                    break
+                    import time
+                    time.sleep(3)
 
         raise RuntimeError(f"All Gemini models failed. Last error: {last_err}")
 

@@ -132,10 +132,17 @@ class IngestionWorker:
                     f.write(full_text)
 
                 processed_count += 1
+
+                # Solusi 1: Pacing jeda 2.5 detik antar halaman agar tidak terkena limit 15 RPM Google Gemini
+                if idx < total_pages:
+                    time.sleep(2.5)
+
             except Exception as page_err:
                 import traceback
                 print(f"[IngestionWorker] ❌ Error processing Page {idx}/{total_pages}: {page_err}")
                 traceback.print_exc()
+                # Jika terkena error berat, beri jeda lebih lama sebelum lanjut halaman berikutnya
+                time.sleep(5)
 
         elapsed = time.time() - t0
         print(f"[IngestionWorker] ✅ Ingestion finished for '{filename}' ({processed_count}/{total_pages} pages) in {elapsed:.2f}s!")
