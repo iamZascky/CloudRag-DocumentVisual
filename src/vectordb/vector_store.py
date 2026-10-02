@@ -35,8 +35,14 @@ class PureVectorStore:
             self.db_path = db_path
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
 
-        self.embedder = embedder or MultilingualE5Embedder()
+        self._embedder = embedder
         self._init_db()
+
+    @property
+    def embedder(self) -> MultilingualE5Embedder:
+        if self._embedder is None:
+            self._embedder = MultilingualE5Embedder()
+        return self._embedder
 
     def _get_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)

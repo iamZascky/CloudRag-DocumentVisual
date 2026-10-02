@@ -120,3 +120,56 @@ def validate_extraction(doc_category: str, structured_data: Dict[str, Any]) -> s
             return f"AUDIT_FLAGGED: Schema validation error - {e}"
             
     return "VERIFIED"
+
+def expand_general_document_query(query: str) -> str:
+    """
+    Lightweight, Pure-Python Query Expansion & Intent Enrichment for general documents:
+    - Invoices, Financial reports, SPJ, and Reimbursements
+    - Official letters, Memos, Decrees, and Circulars
+    - Legal agreements, Contracts, MoUs, and Terms
+    - Form applications, Approvals, and Attendance sheets
+    Works universally across Indonesian and English without external heavy libraries.
+    """
+    if not query:
+        return query
+
+    clean = query.lower().strip()
+    expansions = []
+
+    # 1. Total / Financial / Calculation Intent
+    if any(k in clean for k in ["total", "jumlah", "biaya", "harga", "nilai", "anggaran", "belanja", "pencairan", "bayar", "cost", "sum", "amount"]):
+        expansions.extend([
+            "grand total", "rekapitulasi", "jumlah total", "permohonan pencairan", "subtotal", "rincian biaya"
+        ])
+
+    # 2. Letter / Disposisi / Administration Intent
+    if any(k in clean for k in ["surat", "nomor", "no surat", "perihal", "lampiran", "disposisi", "dinas", "keputusan", "letter"]):
+        expansions.extend([
+            "nota dinas", "nomor surat", "lampiran", "perihal", "kepada yth", "tanggal surat"
+        ])
+
+    # 3. Contract / Legal / Agreement Intent
+    if any(k in clean for k in ["kontrak", "perjanjian", "pasal", "mou", "pihak", "kesepakatan", "contract", "agreement"]):
+        expansions.extend([
+            "surat perjanjian", "pihak pertama", "pihak kedua", "pasal", "ketentuan", "tanda tangan"
+        ])
+
+    # 4. Receipt / Invoice / Transaction Evidence Intent
+    if any(k in clean for k in ["struk", "kwitansi", "nota", "kasir", "invoice", "bukti", "receipt"]):
+        expansions.extend([
+            "bukti pembayaran", "kwitansi", "tanda terima", "no transaksi", "tanggal transaksi"
+        ])
+
+    # 5. Date / Period Intent
+    if any(k in clean for k in ["kapan", "tanggal", "periode", "bulan", "tahun", "date", "period"]):
+        expansions.extend([
+            "periode", "tanggal", "jatuh tempo", "tahun anggaran"
+        ])
+
+    if expansions:
+        # Deduplicate while preserving order
+        unique_added = [w for w in expansions if w not in clean]
+        if unique_added:
+            return f"{query} " + " ".join(unique_added[:6])
+
+    return query

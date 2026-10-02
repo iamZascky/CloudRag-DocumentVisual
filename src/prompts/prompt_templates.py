@@ -1,4 +1,5 @@
 # System and user prompt templates for Visual-RAG
+from typing import Optional, List, Dict
 
 DOCUMENT_EXTRACTION_PROMPT = (
     "You are an expert Document OCR & Archival Transcriber. Transcribe EVERYTHING visible in this document image thoroughly and exhaustively.\n\n"
@@ -36,20 +37,33 @@ def format_qa_prompt(question: str) -> str:
         "5. Language: Provide a clear, polite, and well-formatted answer in Indonesian."
     )
 
-def format_multi_page_qa_prompt(question: str, context_text: str) -> str:
-    """Formats multi-page visual question answering prompt with strict anti-hallucination guidelines."""
+def format_multi_page_qa_prompt(question: str, context_text: str, chat_history: Optional[List[Dict[str, str]]] = None) -> str:
+    """Formats multi-page visual question answering prompt with strict anti-hallucination guidelines and conversation history."""
+    history_block = ""
+    if chat_history:
+        history_lines = []
+        for turn in chat_history:
+            u_msg = turn.get("user_message", "").strip()
+            b_msg = turn.get("bot_reply", "").strip()
+            # truncate long bot replies in history to save tokens
+            b_short = b_msg[:300] + "..." if len(b_msg) > 300 else b_msg
+            history_lines.append(f"User: {u_msg}\nAssistant: {b_short}")
+        history_block = "=== RECENT CONVERSATION HISTORY ===\n" + "\n\n".join(history_lines) + "\n===================================\n\n"
+
     return (
         f"You are an expert Document Auditor. You are provided with the visual document pages alongside verified text transcriptions from other relevant pages in this archive.\n\n"
+        f"{history_block}"
         f"=== TRANSCRIPTION CONTEXT FROM RETRIEVED PAGES ===\n"
         f"{context_text}\n"
         f"==================================================\n\n"
         f"User Question: {question}\n\n"
         "STRICT AUDITING RULES (ZERO HALLUCINATION):\n"
-        "1. GRAND TOTAL PRIORITY: When asked for overall expenditure, total belanja, or total pencairan, ALWAYS look for the executive summary table (e.g. 'NOTA DINAS', 'Jumlah Permohonan Pencairan', or 'Grand Total') and quote that official figure first.\n"
-        "2. NO ARBITRARY MATH: NEVER multiply rows yourself (e.g. do NOT say '33 x 478.500 = ...') unless that exact calculation and total are explicitly printed on the page.\n"
-        "3. STRUCTURED BREAKDOWN: If the user asks for details, provide the exact breakdown as listed (e.g. Periode 1, Periode 2, Roda 2, Roda 4).\n"
-        "4. CURRENCY & CITATION: Always use proper Indonesian formatting (Rp ...). Mention which page or section the numbers come from.\n"
-        "5. Language: Answer politely, clearly, and concisely in Indonesian."
+        "1. CONTEXT AWARENESS: If the question refers to previous discussion (e.g. 'rincikan itu', 'sebutkan tanggalnya', 'siapa kasirnya'), use the conversation history to understand which document or figures are being discussed.\n"
+        "2. GRAND TOTAL PRIORITY: When asked for overall expenditure, total belanja, or total pencairan, ALWAYS look for the executive summary table (e.g. 'NOTA DINAS', 'Jumlah Permohonan Pencairan', or 'Grand Total') and quote that official figure first.\n"
+        "3. NO ARBITRARY MATH: NEVER multiply rows yourself (e.g. do NOT say '33 x 478.500 = ...') unless that exact calculation and total are explicitly printed on the page.\n"
+        "4. STRUCTURED BREAKDOWN: If the user asks for details, provide the exact breakdown as listed (e.g. Periode 1, Periode 2, Roda 2, Roda 4).\n"
+        "5. CURRENCY & CITATION: Always use proper Indonesian formatting (Rp ...). Mention which page or section the numbers come from.\n"
+        "6. Language: Answer politely, clearly, and concisely in Indonesian."
     )
 
 def format_structured_qa_prompt(question: str) -> str:

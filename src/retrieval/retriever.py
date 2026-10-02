@@ -2,7 +2,7 @@ import os
 from typing import List, Dict, Optional
 from src.vectordb.sqlite_db import SqliteDocDatabase
 from src.vectordb.vector_store import ChromaVectorStore
-from src.utils.helpers import load_config
+from src.utils.helpers import load_config, expand_general_document_query
 
 config = load_config()
 retrieval_cfg = config.get("retrieval", {})
@@ -12,7 +12,8 @@ DEFAULT_DEPTH = retrieval_cfg.get("search_depth", 15)
 class HybridRetriever:
     """
     Orchestrates Hybrid Retrieval by fusing SQLite FTS5 (Lexical)
-    and ChromaDB (Semantic) using Reciprocal Rank Fusion (RRF).
+    and ChromaDB (Semantic) using Reciprocal Rank Fusion (RRF)
+    with universal query expansion for general documents.
     """
     def __init__(
         self,
@@ -31,29 +32,39 @@ class HybridRetriever:
         search_depth: int = DEFAULT_DEPTH
     ) -> List[Dict]:
         """
-        Executes hybrid search and returns candidates ranked by RRF score.
+        Executes hybrid search with query expansion and returns candidates ranked by RRF score.
         """
-        sanitized = query.replace('"', '').replace("'", "").strip()
+        # Apply lightweight pure-Python universal query expansion
+        expanded_query = expand_general_document_query(query)
+        sanitized = expanded_query.replace('"', '').replace("'", "").strip()
         fts_results = []
         
-        # 1. Try exact phrase match first in FTS
+        # 1. Try exact phrase match first in FTS (using original query to prioritize exact hits)
+        orig_sanitized = query.replace('"', '').replace("'", "").strip()
         try:
-            fts_results = self.sqlite_db.search_text(f'"{sanitized}"', limit=search_depth)
+            fts_results = self.sqlite_db.search_text(f'"{orig_sanitized}"', limit=search_depth)
         except Exception:
             pass
             
-        # 2. Fall back to word prefix matching in FTS
+        # 2. Fall back to word prefix matching in FTS with expanded terms
         if not fts_results:
             tokens = [w for w in sanitized.replace("?", "").replace("!", "").replace(",", "").split() if len(w) > 1]
             if tokens:
-                fts_query = " OR ".join(f'"{t}"*' for t in tokens)
+                fts_query = " OR ".join(f'"{t}"*' for t in tokens[:12])
                 try:
                     fts_results = self.sqlite_db.search_text(fts_query, limit=search_depth)
                 except Exception:
                     pass
                     
-        # 3. Vector semantic search
-        vector_results = self.vector_store.search(query, limit=search_depth)
+        # 3. Vector semantic search using expanded query
+        vector_results = []
+        # Fast path: If FTS returned sufficient direct lexical matches (>= limit), we already have the right pages!
+        # This keeps query retrieval instantaneous (< 0.01s) instead of waiting for slow CPU embeddings.
+        if len(fts_results) < limit:
+            try:
+                vector_results = self.vector_store.search(expanded_query, limit=search_depth)
+            except Exception as v_err:
+                print(f"[HybridRetriever] Vector search skipped/failed: {v_err}")
         
         # 4. Compute RRF scores
         rrf_scores = {}

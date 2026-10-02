@@ -2,7 +2,7 @@ import os
 import json
 import time
 from typing import Dict, Any, List
-from src.ingestion.loader import render_pdf, enhance_scan
+from src.ingestion.loader import render_pdf, enhance_scan, analyze_pdf_page_content
 from src.vectordb.sqlite_db import SqliteDocDatabase
 from src.vectordb.vector_store import ChromaVectorStore
 from src.utils.helpers import validate_extraction
@@ -72,6 +72,9 @@ class IngestionWorker:
             )
 
         processed_count = 0
+        fast_path_count = 0
+        vision_ai_count = 0
+
         from src.utils.helpers import load_config
         cfg = load_config()
         output_text_dir = cfg.get("storage", {}).get("output_text_dir", os.path.abspath("./storage/outputtext"))
@@ -87,13 +90,41 @@ class IngestionWorker:
                 continue
 
             try:
-                print(f"[IngestionWorker] 👁️ Reading Page {idx}/{total_pages} via Vision AI...")
-                result = self.reader.process_document(enhanced_path)
+                # 1. Hybrid Completeness Detection:
+                # If PDF, check if this page is pure digital text (NO embedded receipt/photo)
+                page_analysis = {}
+                is_pure_digital = False
+                if is_pdf:
+                    page_analysis = analyze_pdf_page_content(file_path, idx - 1)
+                    is_pure_digital = page_analysis.get("is_pure_digital", False)
 
-                doc_category = result.get("doc_category", "OTHER")
-                structured_data = result.get("structured_data", {})
-                title = result.get("title_or_subject", f"{filename} - Hal {idx}")
-                full_text = result.get("full_transcription", "")
+                if is_pure_digital:
+                    # FAST-PATH: Pure digital text with zero embedded receipts/photos
+                    full_text = page_analysis.get("extracted_text", "")
+                    doc_category = "TABLE_REPORT" if ("total" in full_text.lower() or "\t" in full_text) else "DOCUMENT"
+                    title = f"{filename} - Hal {idx} (Digital)"
+                    structured_data = {
+                        "extraction_engine": "PYPDFIUM2_FAST_PATH",
+                        "ocr_cost": "0 API Call (Instant)",
+                        "text_length": len(full_text)
+                    }
+                    has_visuals = False
+                    fast_path_count += 1
+                    print(f"[IngestionWorker] 📄 Page {idx}/{total_pages}: [Pure Digital Text] ➔ Instant Fast-Path ({len(full_text)} chars)")
+                else:
+                    # VISION AI PATH: Mixed page (contains embedded receipts/photos) or scanned page
+                    reason = "Embedded Receipt/Photo" if page_analysis.get("has_embedded_images") else "Visual Document"
+                    print(f"[IngestionWorker] 👁️ Page {idx}/{total_pages}: [{reason}] ➔ Vision AI...")
+                    result = self.reader.process_document(enhanced_path)
+
+                    doc_category = result.get("doc_category", "OTHER")
+                    structured_data = result.get("structured_data", {})
+                    structured_data["extraction_engine"] = "GEMINI_VISION_AI"
+                    structured_data["ocr_cost"] = "1 API Call"
+                    title = result.get("title_or_subject", f"{filename} - Hal {idx}")
+                    full_text = result.get("full_transcription", "")
+                    has_visuals = result.get("has_stamps_or_signatures", False)
+                    vision_ai_count += 1
 
                 # Validation
                 validation_status = validate_extraction(doc_category, structured_data)
@@ -106,7 +137,7 @@ class IngestionWorker:
                     title=title,
                     full_text=full_text,
                     structured_json=json.dumps(structured_data, ensure_ascii=False),
-                    has_visuals=result.get("has_stamps_or_signatures", False)
+                    has_visuals=has_visuals
                 )
 
                 # Sync to vector store
@@ -117,14 +148,16 @@ class IngestionWorker:
                     title=title
                 )
 
-                # Save readable text export
+                # Save readable text export with clear audit engine header
                 txt_filename = os.path.splitext(os.path.basename(enhanced_path))[0] + ".txt"
                 txt_path = os.path.join(output_text_dir, txt_filename)
+                engine_tag = structured_data.get("extraction_engine", "GEMINI_VISION_AI")
                 with open(txt_path, "w", encoding="utf-8") as f:
                     f.write(f"=== DOCUMENT METADATA ===\n")
                     f.write(f"Source Page: {enhanced_path}\n")
                     f.write(f"Category: {doc_category}\n")
                     f.write(f"Title / Subject: {title}\n")
+                    f.write(f"Extraction Engine: {engine_tag}\n")
                     f.write(f"Validation: {validation_status}\n\n")
                     f.write(f"=== STRUCTURED DATA (JSON) ===\n")
                     f.write(json.dumps(structured_data, indent=2, ensure_ascii=False))
@@ -178,10 +211,18 @@ class IngestionWorker:
 
         if recipient_number:
             if processed_count > 0:
+                engine_breakdown = ""
+                if is_pdf and (fast_path_count > 0 or vision_ai_count > 0):
+                    engine_breakdown = (
+                        f"⚡ *Fast-Path Digital:* {fast_path_count} halaman (Hemat Kuota)\n"
+                        f"👁️ *Gemini AI Vision:* {vision_ai_count} halaman (Struk/Visual)\n\n"
+                    )
+
                 done_msg = (
                     f"✅ *Dokumen Berhasil Diindeks!*\n\n"
                     f"📁 *File:* `{filename}`\n"
-                    f"📄 *Berhasil Diindeks:* {processed_count} dari {total_pages} halaman\n"
+                    f"📄 *Total:* {processed_count} dari {total_pages} halaman\n"
+                    f"{engine_breakdown}"
                     f"⏱️ *Waktu Proses:* {elapsed:.1f} detik\n\n"
                     f"💡 _Sekarang Anda bisa langsung mencari dokumen ini dengan:_ \n"
                     f"• `cari: {os.path.splitext(filename)[0]}`\n"

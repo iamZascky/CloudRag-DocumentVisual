@@ -1,5 +1,7 @@
 import os
 import sys
+from dotenv import load_dotenv
+load_dotenv(override=True)
 
 # Limit OpenBLAS / NumPy / OpenMP threads to 1 to stay safely within cPanel nproc limit (40)
 os.environ["OPENBLAS_NUM_THREADS"] = "1"

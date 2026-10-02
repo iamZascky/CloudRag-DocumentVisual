@@ -46,6 +46,18 @@ class SqliteDocDatabase:
             doc_category
         );
         """)
+
+        # Multi-turn conversation memory table (per WhatsApp user/session)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            user_message TEXT,
+            bot_reply TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_sessions(session_id, id);")
         conn.commit()
         conn.close()
 
@@ -133,11 +145,48 @@ class SqliteDocDatabase:
         return [dict(row) for row in rows]
 
     def clear_all(self) -> int:
-        """Deletes all documents and FTS index records. Returns count of deleted documents."""
+        """Deletes all documents, FTS index records, and chat history. Returns count of deleted documents."""
         conn = self.get_connection()
         count = conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
         conn.execute("DELETE FROM documents")
         conn.execute("DELETE FROM fts_documents")
+        conn.execute("DELETE FROM chat_sessions")
         conn.commit()
         conn.close()
         return count
+
+    def add_chat_history(self, session_id: str, user_message: str, bot_reply: str, max_turns: int = 5):
+        """Saves a conversational turn and retains only the latest max_turns for the session."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO chat_sessions (session_id, user_message, bot_reply)
+            VALUES (?, ?, ?)
+        """, (session_id, user_message, bot_reply))
+        
+        # Prune old turns beyond max_turns to keep DB lightweight and queries fast
+        cursor.execute("""
+            DELETE FROM chat_sessions 
+            WHERE session_id = ? AND id NOT IN (
+                SELECT id FROM chat_sessions 
+                WHERE session_id = ? 
+                ORDER BY id DESC LIMIT ?
+            )
+        """, (session_id, session_id, max_turns))
+        conn.commit()
+        conn.close()
+
+    def get_chat_history(self, session_id: str, limit: int = 3) -> List[Dict[str, str]]:
+        """Retrieves the recent conversation history in chronological order."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT user_message, bot_reply 
+            FROM chat_sessions 
+            WHERE session_id = ? 
+            ORDER BY id DESC LIMIT ?
+        """, (session_id, limit))
+        rows = cursor.fetchall()
+        conn.close()
+        # Return in chronological order (oldest to newest)
+        return [{"user_message": row["user_message"], "bot_reply": row["bot_reply"]} for row in reversed(rows)]

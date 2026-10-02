@@ -114,3 +114,77 @@ def enhance_scan(image_path: str, output_dir: Optional[str] = None) -> str:
         raise ValueError(f"Could not read image: {image_path}")
     cv2.imwrite(output_path, img)
     return output_path
+
+def analyze_pdf_page_content(pdf_path: str, page_idx: int) -> dict:
+    """
+    Hybrid Completeness Detector:
+    Analyzes whether a PDF page contains purely digital text or embedded raster images (receipts/stamps/scans).
+    Returns:
+    {
+        "has_digital_text": bool,
+        "text_length": int,
+        "extracted_text": str,
+        "has_embedded_images": bool,
+        "image_count": int,
+        "is_pure_digital": bool  # True ONLY if sufficient text and ZERO embedded photos/receipts
+    }
+    """
+    result = {
+        "has_digital_text": False,
+        "text_length": 0,
+        "extracted_text": "",
+        "has_embedded_images": False,
+        "image_count": 0,
+        "is_pure_digital": False
+    }
+
+    # Method 1: Try pypdfium2
+    try:
+        import pypdfium2 as pdfium
+        pdf = pdfium.PdfDocument(pdf_path)
+        if 0 <= page_idx < len(pdf):
+            page = pdf[page_idx]
+            textpage = page.get_textpage()
+            text = textpage.get_text_range().strip()
+            
+            # Count image objects on page
+            img_count = 0
+            try:
+                for obj in page.get_objects():
+                    if obj.type == pdfium.raw.FPDF_PAGEOBJ_IMAGE:
+                        img_count += 1
+            except Exception:
+                pass
+
+            result["text_length"] = len(text)
+            result["extracted_text"] = text
+            result["has_digital_text"] = len(text) > 80
+            result["image_count"] = img_count
+            result["has_embedded_images"] = img_count > 0
+            # Pure digital only if substantial text and NO embedded raster photos/receipts
+            result["is_pure_digital"] = result["has_digital_text"] and not result["has_embedded_images"]
+            return result
+    except Exception:
+        pass
+
+    # Method 2: Fallback to PyMuPDF (fitz)
+    try:
+        import fitz
+        doc = fitz.open(pdf_path)
+        if 0 <= page_idx < len(doc):
+            page = doc[page_idx]
+            text = page.get_text().strip()
+            images = page.get_images()
+            img_count = len(images)
+
+            result["text_length"] = len(text)
+            result["extracted_text"] = text
+            result["has_digital_text"] = len(text) > 80
+            result["image_count"] = img_count
+            result["has_embedded_images"] = img_count > 0
+            result["is_pure_digital"] = result["has_digital_text"] and not result["has_embedded_images"]
+            return result
+    except Exception:
+        pass
+
+    return result
