@@ -18,9 +18,9 @@ class GeminiVisualReader:
 
     def __init__(self, api_key: Optional[str] = None, model: str = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "")
-        # Use active stable models (gemini-2.5-flash / gemini-1.5-flash)
+        # Strictly use gemini-2.5-flash as confirmed working
         self.model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-        self.candidate_models = [self.model, "gemini-2.5-flash", "gemini-1.5-flash"]
+        self.candidate_models = [self.model, "gemini-2.5-flash"]
 
     def _encode_image(self, image_path: str) -> Dict[str, str]:
         """Encodes local image into base64 for Gemini REST payload."""
@@ -99,8 +99,8 @@ class GeminiVisualReader:
                         return ""
                     elif response.status_code in [429, 503]:
                         # Rate limit (15 RPM) or temporary service overload from Google
-                        wait_sec = (attempt + 1) * 5  # 5s, 10s, 15s, 20s
-                        print(f"[GeminiClient] Model '{m}' hit status {response.status_code}. Backing off for {wait_sec}s (attempt {attempt+1}/4)...")
+                        wait_sec = (attempt + 1) * 15  # 15s, 30s, 45s, 60s
+                        print(f"[GeminiClient] Model '{m}' hit status {response.status_code} (Rate Limit). Backing off for {wait_sec}s to let quota reset (attempt {attempt+1}/4)...")
                         import time
                         time.sleep(wait_sec)
                         continue
