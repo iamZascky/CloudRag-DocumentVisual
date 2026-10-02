@@ -133,6 +133,20 @@ class IngestionWorker:
 
                 processed_count += 1
 
+                # Send milestone progress updates via WhatsApp (strictly at 25%, 50%, 75% milestones)
+                # This ensures exactly 3 progress messages whether the document has 20 pages or 1,000 pages!
+                if recipient_number and total_pages >= 10:
+                    milestones = [int(total_pages * 0.25), int(total_pages * 0.50), int(total_pages * 0.75)]
+                    if idx in milestones:
+                        progress_pct = int((idx / total_pages) * 100)
+                        try:
+                            self.whatsapp_client.send_text_message(
+                                recipient_number,
+                                f"⏳ *Progres Ekstraksi:* {idx}/{total_pages} halaman ({progress_pct}%)\n_Sedang membaca data visual dokumen..._"
+                            )
+                        except Exception:
+                            pass
+
                 # Solusi 1: Pacing jeda 2.5 detik antar halaman agar tidak terkena limit 15 RPM Google Gemini
                 if idx < total_pages:
                     time.sleep(2.5)
