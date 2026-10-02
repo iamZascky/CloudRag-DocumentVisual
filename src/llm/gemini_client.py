@@ -3,7 +3,7 @@ import json
 import re
 import base64
 import requests
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from src.utils.helpers import StructuredQAResponse, parse_first_numeric
 from src.prompts.prompt_templates import DOCUMENT_EXTRACTION_PROMPT, format_qa_prompt, format_multi_page_qa_prompt, format_structured_qa_prompt
 
