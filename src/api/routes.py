@@ -245,11 +245,21 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
         # Command: Clear / Reset Database (/clear database atau /reset db)
         # -------------------------------------------------------------
         clear_keywords = [
-            "clear database", "/clear database", "reset database", "/reset database",
-            "clear db", "/clear db", "reset db", "/reset db",
-            "hapus database", "/hapus database", "bersihkan database"
+            "clear database", "/clear database", "!clear database",
+            "clear databse", "/clear databse", "!clear databse",
+            "clear db", "/clear db", "!clear db",
+            "reset database", "/reset database", "!reset database",
+            "reset databse", "/reset databse", "!reset databse",
+            "reset db", "/reset db", "!reset db",
+            "hapus database", "/hapus database", "!hapus database",
+            "bersihkan database", "/bersihkan database", "!bersihkan database",
+            "hapus db", "/hapus db", "bersihkan db", "/bersihkan db"
         ]
-        if clean_text in clear_keywords:
+        is_clear_cmd = (
+            clean_text in clear_keywords or
+            clean_text.startswith(("/clear database", "clear database", "/clear databse", "clear databse", "/reset db", "clear db"))
+        )
+        if is_clear_cmd:
             print(f"[WhatsApp Bot] ⚠️ Received database clear command from {sender_number}...")
             db = get_sqlite_db()
             vstore = get_vector_store()
