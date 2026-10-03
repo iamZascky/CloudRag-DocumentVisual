@@ -455,15 +455,27 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
         except Exception as hist_err:
             print(f"[WhatsApp Bot] ⚠️ Failed to save chat history: {hist_err}")
 
-        # 4. Send reply back to user with source attribution
+        # 4. Send reply back to user with visual grounding (Image Retrieval)
         refs_str = ", ".join([f"`{os.path.basename(p)}`" for p in selected_images])
         final_reply = (
             f"{answer}\n\n"
             f"─────────────────────\n"
-            f"📄 *Halaman Referensi Visual:* {refs_str}\n"
+            f"📄 *Halaman Referensi:* {refs_str}\n"
             f"🤖 _Dianalisis oleh Cloud Gemini Visual RAG_"
         )
-        send_res = client.send_text_message(sender_number, final_reply)
+
+        # If primary image page exists, send authentic visual proof as WhatsApp Image Message
+        if target_page and os.path.exists(target_page):
+            print(f"[WhatsApp Bot] 📸 Sending primary image proof ({os.path.basename(target_page)}) to {sender_number}...")
+            # Short caption on image to fit WhatsApp caption limits (max 1024 chars)
+            caption_text = final_reply[:1024]
+            send_res = client.send_image_message(sender_number, image_path=target_page, caption=caption_text)
+            # If answer was longer than caption limit, send full answer as follow-up text
+            if len(final_reply) > 1024:
+                client.send_text_message(sender_number, final_reply)
+        else:
+            send_res = client.send_text_message(sender_number, final_reply)
+
         print(f"[WhatsApp Bot] 📤 Send response status: {send_res}")
     except Exception as e:
         import traceback
@@ -511,11 +523,73 @@ def process_incoming_media(sender_number: str, media_id: str, filename: str, mim
         print(f"[WhatsApp Ingestion] 🚀 Passing {save_path} to IngestionWorker...")
         worker = get_ingestion_worker()
         worker.ingest_file(save_path, recipient_number=sender_number)
-
     except Exception as e:
         import traceback
         print(f"[WhatsApp Ingestion Error] ❌ Exception: {e}")
         traceback.print_exc()
+
+def process_incoming_audio(sender_number: str, media_id: str, filename: str, mime_type: str, message_id: str):
+    """
+    Background worker to download voice note/audio from Meta Graph API,
+    transcribe it using Cloud Gemini Multimodal API, and route the question to RAG pipeline.
+    """
+    try:
+        client = get_whatsapp_client()
+        client.mark_as_read(message_id)
+
+        # Notify user that voice note is being processed
+        client.send_text_message(
+            sender_number,
+            "🎙️ *Pesan Suara Diterima*\nSedang mendengarkan & mentranskripsikan pesan suara Anda..."
+        )
+
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+        audio_dir = os.path.join(project_root, "storage", "audio")
+        os.makedirs(audio_dir, exist_ok=True)
+        save_path = os.path.join(audio_dir, filename)
+
+        print(f"[WhatsApp Audio] 📥 Downloading audio {media_id} to {save_path}...")
+        download_success = client.download_media(media_id, save_path)
+
+        if not download_success or not os.path.exists(save_path):
+            client.send_text_message(
+                sender_number,
+                "❌ Gagal mengunduh pesan suara dari WhatsApp. Mohon coba rekam ulang."
+            )
+            return
+
+        reader = get_reader()
+        print(f"[WhatsApp Audio] 🤖 Transcribing audio via Cloud Gemini...")
+        transcription = reader.transcribe_audio(save_path, mime_type=mime_type or "audio/ogg")
+
+        if not transcription:
+            client.send_text_message(
+                sender_number,
+                "⚠️ Suara dalam rekaman tidak terdengar jelas. Mohon rekam ulang atau ketik pertanyaan secara teks."
+            )
+            return
+
+        print(f"[WhatsApp Audio] 🗣️ Transcription result: '{transcription}'")
+        client.send_text_message(
+            sender_number,
+            f"🗣️ *Pertanyaan Suara Anda:*\n_\"{transcription}\"_\n\n🔍 Sedang mencari dokumen relevan..."
+        )
+
+        # Pass transcribed query directly into the RAG pipeline
+        process_and_reply_whatsapp(sender_number, transcription, message_id)
+
+    except Exception as e:
+        import traceback
+        print(f"[WhatsApp Audio Error] ❌ Exception: {e}")
+        traceback.print_exc()
+        try:
+            client = get_whatsapp_client()
+            client.send_text_message(
+                sender_number,
+                f"⚠️ Kendala pemrosesan suara: `{str(e)}`"
+            )
+        except Exception:
+            pass
 
 @app.get("/webhook")
 @app.get("/rag-documentvisual/webhook")
@@ -557,7 +631,17 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
             parsed.get("body", ""),
             msg_id
         )
-    # Skenario 2: Pengguna mengirim pesan teks (Tanya Jawab / Cari / Salam)
+    # Skenario 2: Pengguna mengirim Pesan Suara / Voice Note
+    elif msg_type in ["audio", "voice"] and parsed.get("media_id"):
+        background_tasks.add_task(
+            process_incoming_audio,
+            sender,
+            parsed["media_id"],
+            parsed.get("filename") or f"voice_{msg_id}.ogg",
+            parsed.get("mime_type", "audio/ogg"),
+            msg_id
+        )
+    # Skenario 3: Pengguna mengirim pesan teks (Tanya Jawab / Cari / Salam)
     elif parsed.get("body"):
         background_tasks.add_task(
             process_and_reply_whatsapp,
@@ -567,3 +651,4 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
         )
         
     return {"status": "ok"}
+

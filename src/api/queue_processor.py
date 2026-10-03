@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
 from src.api.whatsapp import WhatsAppClient
-from src.api.routes import process_and_reply_whatsapp, process_incoming_media, get_whatsapp_client
+from src.api.routes import process_and_reply_whatsapp, process_incoming_media, process_incoming_audio, get_whatsapp_client
 
 def process_queue():
     project_root = os.path.abspath(os.path.join(CURRENT_DIR, "../.."))
@@ -70,6 +70,14 @@ def process_queue():
                         parsed.get("filename") or f"doc_{msg_id}.pdf",
                         parsed.get("mime_type", ""),
                         parsed.get("body", ""),
+                        msg_id
+                    )
+                elif msg_type in ["audio", "voice"] and parsed.get("media_id"):
+                    process_incoming_audio(
+                        sender,
+                        parsed["media_id"],
+                        parsed.get("filename") or f"voice_{msg_id}.ogg",
+                        parsed.get("mime_type", "audio/ogg"),
                         msg_id
                     )
                 elif parsed.get("body"):

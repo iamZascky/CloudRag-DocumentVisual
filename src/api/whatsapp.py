@@ -71,6 +71,12 @@ class WhatsAppClient:
                 result["mime_type"] = media_obj.get("mime_type", "")
                 result["filename"] = media_obj.get("filename") or f"doc_{msg_id}.pdf"
                 result["body"] = media_obj.get("caption", "").strip()
+            elif msg_type in ["audio", "voice"]:
+                media_obj = msg.get(msg_type, {})
+                result["media_id"] = media_obj.get("id")
+                result["mime_type"] = media_obj.get("mime_type", "audio/ogg")
+                result["filename"] = f"voice_{msg_id}.ogg"
+                result["body"] = None  # Audio will be transcribed by Gemini Multimodal
 
             return result
         except (IndexError, KeyError, TypeError):
@@ -114,6 +120,65 @@ class WhatsAppClient:
         except Exception as e:
             print(f"[WhatsAppClient Error] Failed to download media: {e}")
             return False
+
+    def upload_media(self, file_path: str, mime_type: str = "image/jpeg") -> Optional[str]:
+        """
+        Uploads a local media file to Meta Graph API and returns its media_id.
+        """
+        if not os.path.exists(file_path):
+            return None
+
+        url = f"https://graph.facebook.com/{GRAPH_API_VERSION}/{self.phone_number_id}/media"
+        headers = {"Authorization": f"Bearer {self.token}"}
+        
+        try:
+            with open(file_path, "rb") as f:
+                files = {
+                    "file": (os.path.basename(file_path), f, mime_type),
+                    "messaging_product": (None, "whatsapp")
+                }
+                resp = requests.post(url, headers=headers, files=files, timeout=30)
+                if resp.status_code in [200, 201]:
+                    return resp.json().get("id")
+                else:
+                    print(f"[WhatsAppClient Error] Upload media failed ({resp.status_code}): {resp.text}")
+                    return None
+        except Exception as e:
+            print(f"[WhatsAppClient Error] Upload exception: {e}")
+            return None
+
+    def send_image_message(self, recipient_number: str, image_path: str, caption: str = "") -> Dict[str, Any]:
+        """
+        Sends an image to recipient via Meta WhatsApp Cloud API:
+        1. Uploads image to get media_id
+        2. Sends image message with caption
+        Falls back to send_text_message if upload fails.
+        """
+        # Compress / ensure JPEG MIME
+        ext = os.path.splitext(image_path)[1].lower()
+        mime = "image/png" if ext == ".png" else "image/jpeg"
+        
+        media_id = self.upload_media(image_path, mime_type=mime)
+        if not media_id:
+            print("[WhatsAppClient] ⚠️ Media upload failed, falling back to text message...")
+            fallback_text = f"{caption}\n\n[Lampiran visual: {os.path.basename(image_path)}]" if caption else f"[Lampiran visual: {os.path.basename(image_path)}]"
+            return self.send_text_message(recipient_number, fallback_text)
+
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "messaging_product": "whatsapp",
+            "to": recipient_number,
+            "type": "image",
+            "image": {
+                "id": media_id,
+                "caption": caption[:1024] if caption else ""
+            }
+        }
+        resp = requests.post(self.base_url, headers=headers, json=data, timeout=15)
+        return resp.json()
 
     def send_text_message(self, recipient_number: str, message: str) -> Dict[str, Any]:
         """

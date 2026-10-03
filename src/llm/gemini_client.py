@@ -67,6 +67,68 @@ class GeminiVisualReader:
                 }
             }
 
+    def _encode_audio(self, audio_path: str, mime_type: str = "audio/ogg") -> Dict[str, Any]:
+        """
+        Encodes local audio file (voice note, ogg, mp3, wav) into base64 for Gemini REST payload.
+        Zero local model / PyTorch required.
+        """
+        with open(audio_path, "rb") as f:
+            b64_data = base64.b64encode(f.read()).decode("utf-8")
+        return {
+            "inline_data": {
+                "mime_type": mime_type,
+                "data": b64_data
+            }
+        }
+
+    def transcribe_audio(self, audio_path: str, mime_type: str = "audio/ogg") -> str:
+        """
+        Transcribes WhatsApp Voice Note / Audio file using Google Gemini Cloud Multimodal API.
+        Accurately transcribes Bahasa Indonesia and regional accents without local Whisper.
+        """
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY is not set.")
+
+        prompt = (
+            "Transkripsikan rekaman suara audio berikut secara akurat ke dalam teks bahasa Indonesia atau bahasa yang diucapkan. "
+            "Keluarkan HANYA teks transkripsi bersih tanpa komentar tambahan atau tanda kutip pembuka/penutup."
+        )
+
+        audio_part = self._encode_audio(audio_path, mime_type=mime_type)
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        audio_part,
+                        {"text": prompt}
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.0,
+                "maxOutputTokens": 1024
+            }
+        }
+
+        headers = {"Content-Type": "application/json"}
+        models_to_try = list(dict.fromkeys(self.candidate_models))
+
+        for m in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={self.api_key}"
+            for attempt in range(2):
+                try:
+                    response = requests.post(url, headers=headers, json=payload, timeout=30)
+                    if response.status_code == 200:
+                        data = response.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts:
+                                return parts[0].get("text", "").strip()
+                except Exception as e:
+                    print(f"[Gemini Transcribe Audio] Model {m} attempt {attempt+1} failed: {e}")
+        return ""
+
     def _call_gemini_api(
         self,
         prompt: str,
