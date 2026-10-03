@@ -166,6 +166,13 @@ def expand_general_document_query(query: str) -> str:
             "periode", "tanggal", "jatuh tempo", "tahun anggaran"
         ])
 
+    # 6. Specific Page / Sequential Navigation Intent (e.g. "halaman terakhir", "halaman 3", "hal 5")
+    if any(k in clean for k in ["halaman", "hal", "page", "terakhir", "pertama", "awal", "cover", "penutup"]):
+        # Retain raw page terms so FTS matches filename patterns and header text
+        expansions.extend([
+            "halaman", "page", "daftar", "lampiran", "tanda tangan"
+        ])
+
     if expansions:
         # Deduplicate while preserving order
         unique_added = [w for w in expansions if w not in clean]

@@ -63,7 +63,8 @@ def format_multi_page_qa_prompt(question: str, context_text: str, chat_history: 
         "3. NO ARBITRARY MATH: NEVER multiply rows yourself (e.g. do NOT say '33 x 478.500 = ...') unless that exact calculation and total are explicitly printed on the page.\n"
         "4. STRUCTURED BREAKDOWN: If the user asks for details, provide the exact breakdown as listed (e.g. Periode 1, Periode 2, Roda 2, Roda 4).\n"
         "5. CURRENCY & CITATION: Always use proper Indonesian formatting (Rp ...). Mention which page or section the numbers come from.\n"
-        "6. Language: Answer politely, clearly, and concisely in Indonesian."
+        "6. VISUAL RETRIEVAL TAG: At the very end of your response on a new line, indicate the primary document page filename you are answering or showing from the TRANSCRIPTION CONTEXT in this exact format: [TARGET_PAGE: filename.jpg]. For example: [TARGET_PAGE: enhanced_bbm september periode 1_page_5.jpg]\n"
+        "7. Language: Answer politely, clearly, and concisely in Indonesian."
     )
 
 def format_structured_qa_prompt(question: str) -> str:

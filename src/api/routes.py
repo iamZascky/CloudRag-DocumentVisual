@@ -356,19 +356,58 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
         reader = get_reader()
         db = get_sqlite_db()
         
-        # 1. Retrieve top 7 candidates
+        # 1. Check for specific page requests (e.g. "halaman terakhir", "halaman 5", "hal 1", "last page")
+        all_docs = db.get_all_documents() # ordered by id DESC
+        # Sort documents chronologically by page number if from the same document
+        all_docs_sorted = sorted(all_docs, key=lambda x: x.get("id", 0))
+
+        clean_q = question.lower()
+        forced_page = None
+
+        if any(term in clean_q for term in ["halaman terakhir", "hal terakhir", "page terakhir", "last page", "lembar terakhir"]):
+            if all_docs_sorted:
+                forced_page = all_docs_sorted[-1]["file_path"]
+                print(f"[WhatsApp Bot] 🎯 Sequential Page Intent Detected: LAST PAGE -> {os.path.basename(forced_page)}")
+        elif any(term in clean_q for term in ["halaman pertama", "hal pertama", "page pertama", "first page", "lembar pertama", "cover"]):
+            if all_docs_sorted:
+                forced_page = all_docs_sorted[0]["file_path"]
+                print(f"[WhatsApp Bot] 🎯 Sequential Page Intent Detected: FIRST PAGE -> {os.path.basename(forced_page)}")
+        else:
+            # Check for specific page number like "halaman 3", "hal 5", "page 2"
+            import re
+            page_num_match = re.search(r"(?:halaman|hal|page)\s*(\d+)", clean_q)
+            if page_num_match:
+                target_num = int(page_num_match.group(1))
+                for d in all_docs_sorted:
+                    if f"page_{target_num}." in d["file_path"].lower():
+                        forced_page = d["file_path"]
+                        print(f"[WhatsApp Bot] 🎯 Specific Page Intent Detected: PAGE {target_num} -> {os.path.basename(forced_page)}")
+                        break
+
+        # 2. Retrieve top candidates
         results = retriever.retrieve(question, limit=7)
         if not results:
-            client.send_text_message(
-                sender_number,
-                "Maaf, tidak ditemukan data dokumen yang relevan untuk pertanyaan Anda."
-            )
-            return
+            if forced_page and os.path.exists(forced_page):
+                # If specific page was asked but general retriever yielded nothing, use the forced page!
+                results = [{"file_path": forced_page, "rrf_score": 1.0, "doc_category": "DOCUMENT"}]
+            elif all_docs_sorted:
+                results = [{"file_path": d["file_path"], "rrf_score": 0.5, "doc_category": d.get("doc_category", "DOCUMENT")} for d in all_docs_sorted[:7]]
+            else:
+                client.send_text_message(
+                    sender_number,
+                    "Maaf, tidak ditemukan data dokumen yang relevan untuk pertanyaan Anda."
+                )
+                return
 
-        # 2. Gather multi-page context and smart primary page selection
+        # 3. Gather multi-page context and smart primary page selection
         context_blocks = []
         best_primary_idx = 0
         best_score = -1
+
+        # Check if the query specifically focuses on overview/summary figures
+        is_summary_query = any(k in clean_q for k in [
+            "total", "jumlah", "biaya", "anggaran", "belanja", "pencairan", "rekapitulasi", "seluruh", "semua"
+        ])
 
         for rank_idx, doc in enumerate(results):
             doc_path = doc["file_path"]
@@ -376,8 +415,12 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
             doc_details = db.get_document_by_path(doc_path)
             
             score = 0
-            # Prioritize page 1 (cover / nota dinas / summary table)
-            if "page_1" in base_name or "hal_1" in base_name:
+            # If a specific page was explicitly requested by user, give it top priority
+            if forced_page and os.path.normpath(doc_path) == os.path.normpath(forced_page):
+                score += 100
+
+            # Prioritize summary page ONLY if user is genuinely asking for summary/financial totals
+            if is_summary_query and ("page_1" in base_name or "hal_1" in base_name):
                 score += 15
 
             if doc_details and doc_details.get("full_transcription"):
@@ -385,43 +428,31 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
                 lower_trans = transcription.lower()
                 context_blocks.append(f"--- [PAGE {rank_idx+1}: {os.path.basename(doc_path)}] ---\n{transcription[:1500]}")
                 
-                # Universal document priority scoring (works for SPJ, invoices, official letters, contracts, reports)
-                for kw, kw_weight in [
-                    # Executive summary & Financial grand totals
-                    ("rekapitulasi", 20),
-                    ("permohonan pencairan", 18),
-                    ("grand total", 18),
-                    ("total pembayaran", 15),
-                    ("jumlah total", 15),
-                    ("ringkasan eksekutif", 15),
-                    ("total biaya", 12),
-                    ("sub total", 8),
-                    # Official administrative headers & letters
-                    ("nota dinas", 18),
-                    ("surat keputusan", 18),
-                    ("surat tugas", 15),
-                    ("surat perjanjian", 18),
-                    ("perihal", 10),
-                    ("kepada yth", 8),
-                    ("nomor surat", 8),
-                    # General structural markers
-                    ("kesimpulan", 10),
-                    ("lembar pengesahan", 12),
-                    ("daftar isi", 10),
-                    ("total", 5)
-                ]:
-                    if kw in lower_trans:
-                        score += kw_weight
+                # Universal document priority scoring (active mainly for general/financial queries)
+                if is_summary_query:
+                    for kw, kw_weight in [
+                        ("rekapitulasi", 20),
+                        ("permohonan pencairan", 18),
+                        ("grand total", 18),
+                        ("total pembayaran", 15),
+                        ("jumlah total", 15),
+                        ("ringkasan eksekutif", 15),
+                        ("total biaya", 12),
+                        ("sub total", 8),
+                        ("nota dinas", 18),
+                        ("total", 5)
+                    ]:
+                        if kw in lower_trans:
+                            score += kw_weight
 
             if score > best_score:
                 best_score = score
                 best_primary_idx = rank_idx
 
         multi_page_context = "\n\n".join(context_blocks)
-        target_page = results[best_primary_idx]["file_path"]
+        target_page = forced_page if forced_page and os.path.exists(forced_page) else results[best_primary_idx]["file_path"]
 
         # Collect top-2 unique image pages for direct visual inspection by Gemini
-        # (Top 2 images + full OCR transcription of all 7 pages gives 100% accuracy while cutting network transfer by 50%)
         selected_images = [target_page]
         for doc in results:
             p = doc["file_path"]
@@ -438,7 +469,7 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
         if recent_history:
             print(f"[WhatsApp Bot] 🧠 Multi-Turn Memory loaded ({len(recent_history)} previous turns for {sender_number})")
 
-        # 3. Generate answer via Vision AI with Multi-Image Visual Grounding and History
+        # 4. Generate answer via Vision AI with Multi-Image Visual Grounding and History
         answer = reader.answer_question(
             image_path=target_page,
             image_paths=selected_images,
@@ -449,14 +480,30 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
         )
         print(f"[WhatsApp Bot] 💡 Answer generated:\n{answer}")
 
+        # 5. Dynamic Visual Synchronization: If Gemini indicated a specific TARGET_PAGE, use it!
+        import re
+        target_page_match = re.search(r"\[TARGET_PAGE:\s*([^\]]+)\]", answer, re.IGNORECASE)
+        if target_page_match:
+            detected_tag_filename = target_page_match.group(1).strip()
+            # Clean tag from public user reply
+            answer = re.sub(r"\[TARGET_PAGE:[^\]]+\]", "", answer).strip()
+            
+            # Find matching file path in archive
+            for d in all_docs:
+                if detected_tag_filename.lower() in d["file_path"].lower() or os.path.basename(d["file_path"]).lower() == detected_tag_filename.lower():
+                    if os.path.exists(d["file_path"]):
+                        target_page = d["file_path"]
+                        print(f"[WhatsApp Bot] 🔄 Visual Retrieval successfully synchronized to AI answer: {os.path.basename(target_page)}")
+                        break
+
         # Save this interaction to SQLite chat history for future context
         try:
             db.add_chat_history(sender_number, question, answer, max_turns=5)
         except Exception as hist_err:
             print(f"[WhatsApp Bot] ⚠️ Failed to save chat history: {hist_err}")
 
-        # 4. Send reply back to user with visual grounding (Image Retrieval)
-        refs_str = ", ".join([f"`{os.path.basename(p)}`" for p in selected_images])
+        # 6. Send reply back to user with visual grounding (Image Retrieval)
+        refs_str = f"`{os.path.basename(target_page)}`"
         final_reply = (
             f"{answer}\n\n"
             f"─────────────────────\n"
@@ -464,7 +511,7 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
             f"🤖 _Dianalisis oleh Cloud Gemini Visual RAG_"
         )
 
-        # If primary image page exists, send authentic visual proof as WhatsApp Image Message
+        # Send authentic visual proof as WhatsApp Image Message
         if target_page and os.path.exists(target_page):
             print(f"[WhatsApp Bot] 📸 Sending primary image proof ({os.path.basename(target_page)}) to {sender_number}...")
             # Short caption on image to fit WhatsApp caption limits (max 1024 chars)
