@@ -71,7 +71,10 @@ class GeminiVisualReader:
         self,
         prompt: str,
         image_path: Optional[str] = None,
-        image_paths: Optional[List[str]] = None
+        image_paths: Optional[List[str]] = None,
+        max_output_tokens: int = 2048,
+        max_attempts: int = 4,
+        backoff_step: int = 15
     ) -> str:
         """Executes HTTP request to Gemini REST API supporting multiple image inputs and robust retry."""
         if not self.api_key:
@@ -101,7 +104,7 @@ class GeminiVisualReader:
             ],
             "generationConfig": {
                 "temperature": 0.1,
-                "maxOutputTokens": 2048
+                "maxOutputTokens": max_output_tokens
             }
         }
 
@@ -112,7 +115,7 @@ class GeminiVisualReader:
         models_to_try = list(dict.fromkeys(self.candidate_models))
         for m in models_to_try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={self.api_key}"
-            for attempt in range(4):  # Up to 4 attempts per model
+            for attempt in range(max_attempts):
                 try:
                     response = requests.post(url, headers=headers, json=payload, timeout=45)
                     if response.status_code == 200:
@@ -127,8 +130,11 @@ class GeminiVisualReader:
                         return ""
                     elif response.status_code in [429, 503]:
                         # Rate limit (15 RPM) or temporary service overload from Google
-                        wait_sec = (attempt + 1) * 15  # 15s, 30s, 45s, 60s
-                        print(f"[GeminiClient] Model '{m}' hit status {response.status_code} (Rate Limit). Backing off for {wait_sec}s to let quota reset (attempt {attempt+1}/4)...")
+                        last_err = f"Gemini API {response.status_code} on {m}"
+                        if attempt + 1 >= max_attempts:
+                            break  # move on to the next candidate model immediately
+                        wait_sec = (attempt + 1) * backoff_step
+                        print(f"[GeminiClient] Model '{m}' hit status {response.status_code} (Rate Limit). Backing off for {wait_sec}s (attempt {attempt+1}/{max_attempts})...")
                         import time
                         time.sleep(wait_sec)
                         continue
@@ -198,7 +204,9 @@ class GeminiVisualReader:
 
     def process_document(self, image_path: str) -> dict:
         """Extract structured data and full transcription via Gemini."""
-        raw_text = self._call_gemini_api(DOCUMENT_EXTRACTION_PROMPT, image_path=image_path)
+        # 8192 tokens: a dense table/receipt page with full verbatim transcription easily exceeds 2048,
+        # which previously truncated the stored text mid-page.
+        raw_text = self._call_gemini_api(DOCUMENT_EXTRACTION_PROMPT, image_path=image_path, max_output_tokens=8192)
         return self._clean_and_parse_json(raw_text)
 
     def answer_question(
@@ -217,7 +225,11 @@ class GeminiVisualReader:
         else:
             prompt = format_qa_prompt(question)
 
-        return self._call_gemini_api(prompt, image_path=image_path, image_paths=image_paths)
+        # Interactive QA must fail fast: worst case ~2 models x (45s + 5s) instead of ~5 minutes of backoff.
+        return self._call_gemini_api(
+            prompt, image_path=image_path, image_paths=image_paths,
+            max_output_tokens=2048, max_attempts=2, backoff_step=5
+        )
 
     def answer_question_structured(
         self,

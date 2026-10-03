@@ -39,6 +39,7 @@ class IngestionWorker:
         """
         filename = os.path.basename(file_path)
         ext = os.path.splitext(filename)[1].lower()
+        is_pdf = ext == ".pdf"
         t0 = time.time()
 
         print(f"\n[IngestionWorker] 🚀 Starting ingestion for: '{filename}'...")
@@ -173,7 +174,7 @@ class IngestionWorker:
                 if recipient_number and total_pages >= 4:
                     if idx == 1:
                         try:
-                            self.whatsapp_client.send_text_message(
+                            self.wa.send_text_message(
                                 recipient_number,
                                 f"🚀 *Mulai Membaca Dokumen:*\nHalaman 1/{total_pages} berhasil dibaca. Melanjutkan ekstraksi halaman berikutnya..."
                             )
@@ -188,7 +189,7 @@ class IngestionWorker:
                         if idx in milestones:
                             progress_pct = int((idx / total_pages) * 100)
                             try:
-                                self.whatsapp_client.send_text_message(
+                                self.wa.send_text_message(
                                     recipient_number,
                                     f"⏳ *Progres Ekstraksi:* {idx}/{total_pages} halaman ({progress_pct}%)\n_Sedang membaca data visual dokumen..._"
                                 )
@@ -196,7 +197,8 @@ class IngestionWorker:
                                 pass
 
                 # Solusi 1: Pacing jeda 2.5 detik antar halaman agar tidak terkena limit 15 RPM Google Gemini
-                if idx < total_pages:
+                # (only needed after a Vision AI call; fast-path digital pages use zero API quota)
+                if idx < total_pages and not is_pure_digital:
                     time.sleep(2.5)
 
             except Exception as page_err:

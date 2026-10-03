@@ -35,7 +35,31 @@ def render_pdf(pdf_path: str, dpi: int = DEFAULT_DPI, output_dir: Optional[str] 
     os.makedirs(target_dir, exist_ok=True)
     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
     output_paths = []
-    
+
+    # Method 0 (preferred): pypdfium2 streaming - renders & frees ONE page at a time.
+    # Keeps RAM flat (~30 MB) even for 100+ page PDFs on cPanel (1 GB LVE limit).
+    try:
+        import pypdfium2 as pdfium
+        pdf = pdfium.PdfDocument(pdf_path)
+        scale = dpi / 72.0
+        for i in range(len(pdf)):
+            page = pdf[i]
+            bitmap = page.render(scale=scale)
+            pil_image = bitmap.to_pil()
+            page_path = os.path.join(target_dir, f"{base_name}_page_{i+1}.jpg")
+            pil_image.save(page_path, 'JPEG', quality=90)
+            output_paths.append(page_path)
+            pil_image.close()
+            bitmap.close()
+            page.close()
+        pdf.close()
+        return output_paths
+    except ImportError:
+        pass
+    except Exception as stream_err:
+        print(f"[PDF Loader] pypdfium2 streaming failed ({stream_err}). Trying other renderers...")
+        output_paths = []
+
     # Method 1: Try pdf2image with Poppler
     try:
         from pdf2image import convert_from_path

@@ -43,8 +43,16 @@ def process_queue():
     client = get_whatsapp_client()
 
     for file_path in files:
+        # Atomic claim: a long PDF ingestion can outlive the 50s cron window, and the next
+        # cron run would otherwise pick up the same JSON again -> duplicate ingestion/replies.
+        claimed_path = file_path + ".processing"
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            os.rename(file_path, claimed_path)
+        except OSError:
+            continue  # already claimed by another processor instance
+
+        try:
+            with open(claimed_path, "r", encoding="utf-8") as f:
                 payload = json.load(f)
 
             parsed = client.parse_incoming_message(payload)
@@ -74,7 +82,7 @@ def process_queue():
             print(f"[QueueProcessor Error] {e}")
         finally:
             try:
-                os.remove(file_path)
+                os.remove(claimed_path)
             except Exception:
                 pass
 
