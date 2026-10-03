@@ -39,6 +39,8 @@ BENCHMARK_MAIN.md
 benchmark.py
 tests/test_benchmark.py
 storage/benchmark/
+article.md
+article*.md
 
 # Input Data (Ignore user uploaded PDFs, receipts, and scans)
 data/*
