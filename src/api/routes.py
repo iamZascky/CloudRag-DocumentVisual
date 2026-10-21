@@ -464,13 +464,13 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
         multi_page_context = "\n\n".join(context_blocks)
         target_page = forced_page if forced_page and os.path.exists(forced_page) else results[best_primary_idx]["file_path"]
 
-        # Collect top-2 unique image pages for direct visual inspection by Gemini
+        # Collect top-3 unique image pages for direct visual inspection by Gemini
         selected_images = [target_page]
         for doc in results:
             p = doc["file_path"]
             if p not in selected_images and os.path.exists(p):
                 selected_images.append(p)
-            if len(selected_images) >= 2:
+            if len(selected_images) >= 3:
                 break
 
         print(f"[WhatsApp Bot] 📄 Primary document selected: {os.path.basename(target_page)} (score: {best_score})")
