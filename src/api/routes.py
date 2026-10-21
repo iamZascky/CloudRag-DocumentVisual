@@ -404,9 +404,10 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
         best_primary_idx = 0
         best_score = -1
 
-        # Check if the query specifically focuses on overview/summary figures
+        # Check if the query specifically focuses on overview/summary figures or conclusions
         is_summary_query = any(k in clean_q for k in [
-            "total", "jumlah", "biaya", "anggaran", "belanja", "pencairan", "rekapitulasi", "seluruh", "semua"
+            "total", "jumlah", "biaya", "anggaran", "belanja", "pencairan", "rekapitulasi",
+            "seluruh", "semua", "ringkasan", "kesimpulan", "keputusan", "pokok", "hasil akhir"
         ])
 
         for rank_idx, doc in enumerate(results):
@@ -419,7 +420,7 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
             if forced_page and os.path.normpath(doc_path) == os.path.normpath(forced_page):
                 score += 100
 
-            # Prioritize summary page ONLY if user is genuinely asking for summary/financial totals
+            # Prioritize cover or executive summary page ONLY if user asks for overview/summary
             if is_summary_query and ("page_1" in base_name or "hal_1" in base_name):
                 score += 15
 
@@ -428,18 +429,21 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
                 lower_trans = transcription.lower()
                 context_blocks.append(f"--- [PAGE {rank_idx+1}: {os.path.basename(doc_path)}] ---\n{transcription[:1500]}")
                 
-                # Universal document priority scoring (active mainly for general/financial queries)
+                # Universal document priority scoring across all document genres (surat, kontrak, laporan keuangan, sk)
                 if is_summary_query:
                     for kw, kw_weight in [
                         ("rekapitulasi", 20),
-                        ("permohonan pencairan", 18),
+                        ("ringkasan eksekutif", 18),
                         ("grand total", 18),
+                        ("kesimpulan", 18),
+                        ("keputusan", 16),
+                        ("permohonan pencairan", 15),
                         ("total pembayaran", 15),
                         ("jumlah total", 15),
-                        ("ringkasan eksekutif", 15),
+                        ("surat keputusan", 15),
+                        ("nota dinas", 15),
                         ("total biaya", 12),
                         ("sub total", 8),
-                        ("nota dinas", 18),
                         ("total", 5)
                     ]:
                         if kw in lower_trans:
@@ -493,8 +497,49 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
                 if detected_tag_filename.lower() in d["file_path"].lower() or os.path.basename(d["file_path"]).lower() == detected_tag_filename.lower():
                     if os.path.exists(d["file_path"]):
                         target_page = d["file_path"]
-                        print(f"[WhatsApp Bot] 🔄 Visual Retrieval successfully synchronized to AI answer: {os.path.basename(target_page)}")
+                        print(f"[WhatsApp Bot] 🔄 Visual Retrieval successfully synchronized to AI tag: {os.path.basename(target_page)}")
                         break
+        else:
+            # Fallback 1: Textual page citation (e.g. 'Halaman 4', 'Hal 4', 'Page 5')
+            page_mention_match = re.search(r"(?:halaman|hal\.?|page)\s*(\d+)", answer, re.IGNORECASE)
+            page_found = False
+            if page_mention_match:
+                mentioned_page_num = page_mention_match.group(1)
+                for d in all_docs:
+                    b_name = os.path.basename(d["file_path"]).lower()
+                    if f"page_{mentioned_page_num}." in b_name or f"hal_{mentioned_page_num}." in b_name or f"page_{mentioned_page_num}_" in b_name:
+                        if os.path.exists(d["file_path"]):
+                            target_page = d["file_path"]
+                            page_found = True
+                            print(f"[WhatsApp Bot] 🎯 Visual Retrieval aligned via textual page citation (Halaman {mentioned_page_num}): {os.path.basename(target_page)}")
+                            break
+
+            # Fallback 2: Token / Entity Overlap Matching (Solusi 2: Cocokkan kata/angka kunci unik dari jawaban ke teks halaman dokumen)
+            if not page_found:
+                # Extract key identifiers (e.g. vehicle names, license plates, nominal Rp digits)
+                answer_tokens = set(re.findall(r"\b[A-Za-z0-9_]{4,}\b", answer.lower()))
+                # Ignore generic Indonesian stopwords
+                stopwords = {"yang", "pada", "dokumen", "adalah", "untuk", "dengan", "tidak", "tersebut", "berikut", "sebagai", "mencakup", "besaran", "halaman", "harga", "liter", "jumlah", "catatan", "merek", "khususnya"}
+                meaningful_tokens = {t for t in answer_tokens if t not in stopwords and not t.isdigit()}
+                
+                best_match_page = None
+                max_overlap = 0
+
+                for candidate in results:
+                    c_path = candidate.get("file_path")
+                    if not c_path or not os.path.exists(c_path):
+                        continue
+                    c_details = db.get_document_by_path(c_path)
+                    if c_details and c_details.get("full_transcription"):
+                        cand_trans = c_details["full_transcription"].lower()
+                        overlap = sum(1 for tok in meaningful_tokens if tok in cand_trans)
+                        if overlap > max_overlap:
+                            max_overlap = overlap
+                            best_match_page = c_path
+
+                if best_match_page and max_overlap >= 2:
+                    target_page = best_match_page
+                    print(f"[WhatsApp Bot] 🎯 Visual Retrieval aligned via Token Overlap ({max_overlap} terms match): {os.path.basename(target_page)}")
 
         # Save this interaction to SQLite chat history for future context
         try:
@@ -666,6 +711,16 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     sender = parsed["sender"]
     msg_id = parsed["msg_id"]
     msg_type = parsed.get("type")
+
+    # Idempotency / Deduplication check: prevent Meta retry duplicate message flood
+    db = get_sqlite_db()
+    if msg_id and db.is_message_processed(msg_id):
+        print(f"[WhatsApp Webhook] 🔁 Ignored duplicate message retry: {msg_id}")
+        return {"status": "ok", "message": "duplicate ignored"}
+
+    # Record msg_id immediately
+    if msg_id:
+        db.record_processed_message(msg_id)
 
     # Skenario 1: Pengguna mengirim dokumen (PDF) atau gambar
     if msg_type in ["document", "image"] and parsed.get("media_id"):

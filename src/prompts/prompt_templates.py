@@ -57,14 +57,15 @@ def format_multi_page_qa_prompt(question: str, context_text: str, chat_history: 
         f"{context_text}\n"
         f"==================================================\n\n"
         f"User Question: {question}\n\n"
-        "STRICT AUDITING RULES (ZERO HALLUCINATION):\n"
-        "1. CONTEXT AWARENESS: If the question refers to previous discussion (e.g. 'rincikan itu', 'sebutkan tanggalnya', 'siapa kasirnya'), use the conversation history to understand which document or figures are being discussed.\n"
-        "2. GRAND TOTAL PRIORITY: When asked for overall expenditure, total belanja, or total pencairan, ALWAYS look for the executive summary table (e.g. 'NOTA DINAS', 'Jumlah Permohonan Pencairan', or 'Grand Total') and quote that official figure first.\n"
-        "3. NO ARBITRARY MATH: NEVER multiply rows yourself (e.g. do NOT say '33 x 478.500 = ...') unless that exact calculation and total are explicitly printed on the page.\n"
-        "4. STRUCTURED BREAKDOWN: If the user asks for details, provide the exact breakdown as listed (e.g. Periode 1, Periode 2, Roda 2, Roda 4).\n"
-        "5. CURRENCY & CITATION: Always use proper Indonesian formatting (Rp ...). Mention which page or section the numbers come from.\n"
-        "6. VISUAL RETRIEVAL TAG: At the very end of your response on a new line, indicate the primary document page filename you are answering or showing from the TRANSCRIPTION CONTEXT in this exact format: [TARGET_PAGE: filename.jpg]. For example: [TARGET_PAGE: enhanced_bbm september periode 1_page_5.jpg]\n"
-        "7. Language: Answer politely, clearly, and concisely in Indonesian."
+        "STRICT AUDITING RULES (ZERO HALLUCINATION & GENERAL DOCUMENT HANDLING):\n"
+        "1. GENERAL & DOMAIN-AGNOSTIC: This system audits all types of documents: financial reports, contracts, invoices/receipts, legal letters, engineering specs, academic papers, and general office documents.\n"
+        "2. CONTEXT AWARENESS: If the question refers to previous discussion (e.g. 'rincikan itu', 'sebutkan tanggalnya', 'siapa penandatangannya'), use the conversation history to understand which document or sections are being discussed.\n"
+        "3. EXECUTIVE SUMMARY / TOTAL PRIORITY: When asked for overall summaries, decisions, conclusions, total biaya, or grand totals, prioritize executive summary tables/clauses or closing signature sections and quote official numbers/verdicts directly.\n"
+        "4. NO ARBITRARY MATH & NO EXTRAPOLATION: NEVER calculate or extrapolate numbers or facts unless explicitly printed on the page.\n"
+        "5. FACTUAL CITATION: Quote verbatim names, entities, clauses, dates, serial numbers, and monetary figures. Mention which page or section the data comes from.\n"
+        "6. VISUAL RETRIEVAL TAG (MANDATORY): At the very end of your response on a new line, you MUST indicate the exact page filename from TRANSCRIPTION CONTEXT that contains the specific evidence or table you cited: [TARGET_PAGE: filename.jpg]. Example: [TARGET_PAGE: document_page_3.jpg]\n"
+        "7. ACCURATE CITATION: In your written answer, do not guess or mix up page numbers. Always refer to the exact page number indicated in the header '--- [PAGE X: filename] ---'.\n"
+        "8. Language: Answer politely, clearly, and concisely in Indonesian."
     )
 
 def format_structured_qa_prompt(question: str) -> str:

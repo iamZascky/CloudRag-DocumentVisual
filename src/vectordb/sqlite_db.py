@@ -58,6 +58,15 @@ class SqliteDocDatabase:
         );
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_sessions(session_id, id);")
+
+        # Processed incoming WhatsApp message IDs to prevent retry duplicate loops
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS processed_messages (
+            msg_id TEXT PRIMARY KEY,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_msg_created ON processed_messages(created_at);")
         conn.commit()
         conn.close()
 
@@ -190,3 +199,23 @@ class SqliteDocDatabase:
         conn.close()
         # Return in chronological order (oldest to newest)
         return [{"user_message": row["user_message"], "bot_reply": row["bot_reply"]} for row in reversed(rows)]
+
+    def is_message_processed(self, msg_id: str) -> bool:
+        """Checks if a WhatsApp message ID has already been recorded / processed."""
+        if not msg_id:
+            return False
+        conn = self.get_connection()
+        row = conn.execute("SELECT msg_id FROM processed_messages WHERE msg_id = ?", (msg_id,)).fetchone()
+        conn.close()
+        return row is not None
+
+    def record_processed_message(self, msg_id: str):
+        """Records a WhatsApp message ID to prevent duplicate executions from Meta webhook retries."""
+        if not msg_id:
+            return
+        conn = self.get_connection()
+        conn.execute("INSERT OR IGNORE INTO processed_messages (msg_id) VALUES (?)", (msg_id,))
+        # Keep table compact: prune entries older than 2 days
+        conn.execute("DELETE FROM processed_messages WHERE created_at < datetime('now', '-2 days')")
+        conn.commit()
+        conn.close()

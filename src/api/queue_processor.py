@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
 from src.api.whatsapp import WhatsAppClient
-from src.api.routes import process_and_reply_whatsapp, process_incoming_media, process_incoming_audio, get_whatsapp_client
+from src.api.routes import process_and_reply_whatsapp, process_incoming_media, process_incoming_audio, get_whatsapp_client, get_sqlite_db
 
 def process_queue():
     project_root = os.path.abspath(os.path.join(CURRENT_DIR, "../.."))
@@ -43,6 +43,7 @@ def process_queue():
     client = get_whatsapp_client()
 
     for file_path in files:
+        # Atomic claim: a long PDF ingestion can outlive the 50s cron window, and the next
         # Atomic claim: a long PDF ingestion can outlive the 50s cron window, and the next
         # cron run would otherwise pick up the same JSON again -> duplicate ingestion/replies.
         claimed_path = file_path + ".processing"
@@ -60,6 +61,15 @@ def process_queue():
                 sender = parsed["sender"]
                 msg_id = parsed["msg_id"]
                 msg_type = parsed.get("type")
+
+                # Deduplication check in queue processor
+                db = get_sqlite_db()
+                if msg_id and db.is_message_processed(msg_id):
+                    print(f"[QueueProcessor] 🔁 Ignored duplicate message retry: {msg_id}")
+                    continue
+
+                if msg_id:
+                    db.record_processed_message(msg_id)
 
                 print(f"[QueueProcessor] 📩 Processing {msg_type} from {sender} (ID: {msg_id})...")
 

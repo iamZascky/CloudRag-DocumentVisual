@@ -41,6 +41,12 @@ tests/test_benchmark.py
 storage/benchmark/
 article.md
 article*.md
+presentation.md
+presentation*.md
+architecture.html
+architecture*.html
+architecture.md
+architecture*.md
 
 # Input Data (Ignore user uploaded PDFs, receipts, and scans)
 data/*
@@ -84,3 +90,8 @@ desktop.ini
 # Binary tunnels
 cloudflared.exe
 ngrok.exe
+
+arsitektur_sistem.png
+arsitektur*.png
+architecture*.png
+export_diagram.html
