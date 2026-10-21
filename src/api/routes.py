@@ -412,7 +412,8 @@ def process_and_reply_whatsapp(sender_number: str, question: str, message_id: st
         best_score = -1
 
         # Check if the query specifically focuses on overview/summary figures or conclusions
-        is_summary_query = any(k in clean_q for k in [
+        is_item_query = any(k in clean_q for k in ["jenis", "nama", "apa saja", "daftar", "rincian", "tipe", "merk", "produk", "varian", "komoditas", "material"])
+        is_summary_query = not is_item_query and any(k in clean_q for k in [
             "total", "jumlah", "biaya", "anggaran", "belanja", "pencairan", "rekapitulasi",
             "seluruh", "semua", "ringkasan", "kesimpulan", "keputusan", "pokok", "hasil akhir"
         ])
