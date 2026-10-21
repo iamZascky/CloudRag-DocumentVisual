@@ -136,8 +136,9 @@ def expand_general_document_query(query: str) -> str:
     clean = query.lower().strip()
     expansions = []
 
-    # 1. Total / Financial / Calculation Intent
-    if any(k in clean for k in ["total", "jumlah", "biaya", "harga", "nilai", "anggaran", "belanja", "pencairan", "bayar", "cost", "sum", "amount"]):
+    # 1. Total / Financial / Calculation Intent (Only expand if explicitly asking for calculation/grand totals, NOT when asking about types/names of items)
+    is_item_query = any(k in clean for k in ["jenis", "nama", "apa saja", "daftar", "rincian", "tipe", "merk", "produk", "varian"])
+    if not is_item_query and any(k in clean for k in ["total", "jumlah", "biaya", "harga", "nilai", "anggaran", "belanja", "pencairan", "bayar", "cost", "sum", "amount"]):
         expansions.extend([
             "grand total", "rekapitulasi", "jumlah total", "permohonan pencairan", "subtotal", "rincian biaya"
         ])
