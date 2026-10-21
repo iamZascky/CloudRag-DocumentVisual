@@ -160,6 +160,12 @@ def expand_general_document_query(query: str) -> str:
             "bukti pembayaran", "kwitansi", "tanda terima", "no transaksi", "tanggal transaksi"
         ])
 
+    # 4b. Itemized Goods, Commodities, & Procurement Intent (Universal: Barang, Jasa, Sparepart, ATK, BBM, dll)
+    if any(k in clean for k in ["barang", "item", "produk", "komoditas", "belanja", "pengadaan", "jenis", "material", "atk", "sparepart", "bbm", "bahan bakar", "bensin", "solar", "minyak", "konsumsi"]):
+        expansions.extend([
+            "uraian", "nama barang", "nama produk", "spesifikasi", "satuan", "volume", "rincian barang", "item belanja"
+        ])
+
     # 5. Date / Period Intent
     if any(k in clean for k in ["kapan", "tanggal", "periode", "bulan", "tahun", "date", "period"]):
         expansions.extend([

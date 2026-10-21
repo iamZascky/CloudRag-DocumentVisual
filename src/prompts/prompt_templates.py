@@ -61,11 +61,12 @@ def format_multi_page_qa_prompt(question: str, context_text: str, chat_history: 
         "1. GENERAL & DOMAIN-AGNOSTIC: This system audits all types of documents: financial reports, contracts, invoices/receipts, legal letters, engineering specs, academic papers, and general office documents.\n"
         "2. CONTEXT AWARENESS: If the question refers to previous discussion (e.g. 'rincikan itu', 'sebutkan tanggalnya', 'siapa penandatangannya'), use the conversation history to understand which document or sections are being discussed.\n"
         "3. GRAND TOTAL & OFFICIAL BOTTOM-LINE: When asked for overall amount, total belanja, or total pencairan (e.g. 'jumlah belanja bbm berdasarkan npd' / 'total pencairan'), look at the bottom summary row 'JUMLAH' or 'Jumlah dana Yang Diminta' and STATE THAT GRAND TOTAL FIRST (e.g. Rp 29.550.950). Do NOT stop at only the first sub-row (like MOTORIS only) unless the user specifically asked for 'MOTORIS'. Always state the total summary first, then optionally provide the breakdown (MOTORIS, LANTAS, TRUK, dll).\n"
-        "4. NO ARBITRARY MATH & NO EXTRAPOLATION: NEVER calculate or extrapolate numbers or facts unless explicitly printed on the page.\n"
-        "5. FACTUAL CITATION: Quote verbatim names, entities, clauses, dates, serial numbers, and monetary figures. Mention which page or section the data comes from.\n"
-        "6. VISUAL RETRIEVAL TAG (MANDATORY): At the very end of your response on a new line, you MUST indicate the exact page filename from TRANSCRIPTION CONTEXT that contains the specific evidence or table you cited: [TARGET_PAGE: filename.jpg]. Example: [TARGET_PAGE: document_page_3.jpg]\n"
-        "7. ACCURATE CITATION: In your written answer, do not guess or mix up page numbers. Always refer to the exact page number indicated in the header '--- [PAGE X: filename] ---'.\n"
-        "8. Language: Answer politely, clearly, and concisely in Indonesian."
+        "4. EXHAUSTIVE MULTI-PAGE AUDIT (NO TUNNEL VISION): When asked about types/categories of items or commodities purchased/procured across the document (e.g. 'barang apa saja yang dibeli', 'jenis barang/jasa', 'rincian produk', 'material yang dibelanjakan', 'jenis BBM'), do NOT look at only one single receipt/row! Exhaustively scan the entire TRANSCRIPTION CONTEXT across all retrieved pages and list ALL unique varieties, brands, commodities, or services found along with their respective page citations, quantities, and units.\n"
+        "5. NO ARBITRARY MATH & NO EXTRAPOLATION: NEVER calculate or extrapolate numbers or facts unless explicitly printed on the page.\n"
+        "6. FACTUAL CITATION: Quote verbatim names, entities, clauses, dates, serial numbers, and monetary figures. Mention which page or section the data comes from.\n"
+        "7. VISUAL RETRIEVAL TAG (MANDATORY): At the very end of your response on a new line, you MUST indicate the exact page filename from TRANSCRIPTION CONTEXT that contains the specific evidence or table you cited: [TARGET_PAGE: filename.jpg]. Example: [TARGET_PAGE: document_page_3.jpg]\n"
+        "8. ACCURATE CITATION: In your written answer, do not guess or mix up page numbers. Always refer to the exact page number indicated in the header '--- [PAGE X: filename] ---'.\n"
+        "9. Language: Answer politely, clearly, and concisely in Indonesian."
     )
 
 def format_structured_qa_prompt(question: str) -> str:
