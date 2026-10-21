@@ -47,6 +47,9 @@ architecture.html
 architecture*.html
 architecture.md
 architecture*.md
+point.md
+point*.md
+arsitektur*.png
 
 # Input Data (Ignore user uploaded PDFs, receipts, and scans)
 data/*

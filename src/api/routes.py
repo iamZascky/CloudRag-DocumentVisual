@@ -179,14 +179,21 @@ def ask_endpoint(req: AskRequest):
 def process_and_reply_whatsapp(sender_number: str, question: str, message_id: str):
     """Background worker to answer visual RAG query and reply on WhatsApp."""
     try:
+        if not question or not str(question).strip():
+            print(f"[WhatsApp Bot] ⚠️ Empty question/text received from {sender_number}. Skipping.")
+            return
+
+        clean_text = str(question).strip().lower()
+        if not clean_text:
+            return
+
         print(f"\n[WhatsApp Bot] 📥 Processing question from {sender_number}: '{question}'...")
         client = get_whatsapp_client()
         client.mark_as_read(message_id)
 
         # Cek apakah pengguna mengirim salam / meminta menu bantuan
-        clean_text = question.strip().lower()
         greeting_keywords = [
-            "halo", "hallo", "hello", "hai", "hi", "hey", "p", 
+            "halo", "hallo", "hello", "hai", "hi", "hey", 
             "menu", "help", "bantuan", "info", "mulai", "start",
             "tes", "test", "ping", "assalamualaikum", "selamat"
         ]
