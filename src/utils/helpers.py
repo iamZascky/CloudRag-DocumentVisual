@@ -164,7 +164,7 @@ def expand_general_document_query(query: str) -> str:
     # 4b. Itemized Goods, Commodities, & Procurement Intent (Universal: Barang, Jasa, Sparepart, ATK, BBM, dll)
     if any(k in clean for k in ["barang", "item", "produk", "komoditas", "belanja", "pengadaan", "jenis", "material", "atk", "sparepart", "bbm", "bahan bakar", "bensin", "solar", "minyak", "konsumsi"]):
         expansions.extend([
-            "uraian", "nama barang", "nama produk", "spesifikasi", "satuan", "volume", "rincian barang", "item belanja"
+            "nama barang", "nama produk", "spesifikasi", "pertamax", "dexlite", "pertamina dex", "solar", "volume"
         ])
 
     # 5. Date / Period Intent
