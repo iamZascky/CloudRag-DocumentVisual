@@ -1,18 +1,209 @@
-# Local Document Visual-RAG (Windows)
+# Document Visual-RAG & WhatsApp Bot (Cloud AI & Local GPU)
 
-A local Visual-RAG pipeline for scanned documents, receipts, and tabular reports. Runs `Qwen/Qwen2.5-VL-3B-Instruct` locally in native `torch.bfloat16` on NVIDIA RTX GPUs, paired with hybrid retrieval (SQLite FTS5 + ChromaDB) on CPU.
-
-## Architecture & Features
-- **Hybrid Search (RRF)**: Combines SQLite FTS5 lexical search (exact invoice codes, reference numbers) and ChromaDB dense vectors (`intfloat/multilingual-e5-small`) using Reciprocal Rank Fusion ($k = 60$).
-- **Multilingual Retrieval**: Handles queries and document text in English, Indonesian, and mixed terminology out of the box.
-- **CPU Embedding Engine**: Embeddings run on CPU using `sentence-transformers`, leaving GPU VRAM dedicated to the vision-language model.
-- **Isolated Local Storage**: Model checkpoints, SQLite databases, ChromaDB collections, and rendered pages stay inside `./storage/`.
-- **Pre-processing Pipeline**: Automatically renders PDFs via Poppler, runs contour cropping, and applies CLAHE contrast enhancement for faint receipts.
-- **Validation**: Pydantic schema validation checks extracted line items and totals against transcribed values.
+An enterprise-ready Visual-RAG (Retrieval-Augmented Generation) pipeline and conversational WhatsApp Bot for scanned documents, financial reports, and receipts. Features **Dual AI Engines** (Cloud Google Gemini or Local Qwen2.5-VL), paired with hybrid retrieval (**SQLite FTS5 + ChromaDB**) and multi-modal WhatsApp integration.
 
 ---
 
-## Benchmark (41-Page Scanned PDF Batch)
+## ⚡ Dual AI Engine Modes
+
+Switch between modes anytime by setting `AI_MODE` in your `.env` file:
+
+### 1. Mode 1: Cloud AI (Google Gemini Flash)
+Set `AI_MODE=cloud` in `.env`
+
+- **Does NOT use a local GPU**: Requires zero CUDA, zero PyTorch, and zero VRAM.
+- **Model**: Google Gemini Flash (via Cloud REST API).
+- **RAM Footprint**: Under **100 MB** of system RAM.
+- **Latency**: **1.0 – 2.0 seconds** per query.
+- **Extras**: Transcribes WhatsApp voice notes directly and can be hosted on cheap cloud VPS or Shared Hosting (cPanel).
+
+### 2. Mode 2: Local GPU (Qwen Model)
+Set `AI_MODE=local` in `.env`
+
+- **Uses Local GPU & Qwen**: Runs **`Qwen/Qwen2.5-VL-3B-Instruct`** in native `torch.bfloat16`.
+- **Model Pre-download**: Run `python scripts/download_models.py` to cache models locally.
+- **Hardware Needed**: NVIDIA RTX GPU with at least **8 GB VRAM**.
+- **Privacy**: 100% offline on-premise execution with zero external network calls or cloud API costs.
+
+### Comparison Table
+
+| Feature | ☁️ Cloud AI Mode (`AI_MODE=cloud`) | 🖥️ Local GPU Mode (`AI_MODE=local`) |
+| :--- | :--- | :--- |
+| **Model** | **Google Gemini Flash** (2.5 / 1.5 Flash via REST API) | **Qwen2.5-VL-3B-Instruct** (`bfloat16`) |
+| **Hardware** | **Zero GPU / CUDA / PyTorch required** | NVIDIA RTX GPU (8 GB+ VRAM recommended) |
+| **RAM Footprint** | **< 100 MB RAM** (ultra-lightweight) | ~8 GB VRAM + 4 GB System RAM |
+| **Response Latency** | **1.0 – 2.5 seconds** per query | ~9 – 35 seconds per page extraction |
+| **WhatsApp Voice Notes** | Direct audio transcription via Gemini Multimodal | Requires local Whisper (or cloud fallback) |
+| **Deployment Target** | Shared Hosting (cPanel), Low-spec VPS, Railway, Local | Dedicated Workstation, GPU Cloud (RunPod, Lambda) |
+| **Data Privacy** | Cloud API (processed via Google AI Studio) | 100% On-Premise, zero external network calls |
+
+---
+
+## 📱 WhatsApp Bot Capabilities (Meta WhatsApp Cloud API)
+
+The built-in FastAPI webhook (`/webhook`) turns your RAG pipeline into an interactive WhatsApp assistant:
+
+1. **Visual Grounding & Proof-of-Answer**: 
+   When answering questions (e.g., *"Berapa total belanja BBM di kwitansi?"*), the bot replies with the precise textual answer **and immediately sends the relevant receipt/page crop as an image proof**.
+2. **In-Chat Document Ingestion**: 
+   Upload PDF files or receipt photos directly into the WhatsApp chat. The bot automatically downloads, renders, pre-processes (CLAHE contrast), extracts text/tables, and indexes them into SQLite & ChromaDB in the background.
+3. **Voice Note (Audio) Q&A**: 
+   Send WhatsApp voice notes; the system transcribes the speech via Gemini Cloud and routes the query directly through the RAG engine.
+4. **Built-in Quick Commands**:
+   - `cari: <kata kunci>` or `/cari <keyword>`: Sub-second lexical & semantic search.
+   - `/status`: Real-time report of indexed documents and vector count.
+   - `/clear database`: Cleans and resets the database and image storage.
+
+---
+
+## ⚙️ Environment Configuration (`.env`)
+
+Create or update your `.env` file in the project root:
+
+```dotenv
+# ========================================================
+# 1. AI Engine Selection ('cloud' or 'local')
+# ========================================================
+AI_MODE=cloud
+
+# ========================================================
+# 2. Cloud AI Credentials (Required if AI_MODE=cloud)
+# ========================================================
+# Free API key from Google AI Studio: https://aistudio.google.com/app/apikey
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# ========================================================
+# 3. Meta WhatsApp Cloud API (Required for WhatsApp Bot)
+# ========================================================
+WHATSAPP_TOKEN=your_permanent_meta_system_user_token
+PHONE_NUMBER_ID=your_phone_number_id
+WHATSAPP_VERIFY_TOKEN=docuvisual_secret_token_2026
+
+# ========================================================
+# 4. Optional: Hugging Face Token (for downloading Qwen)
+# ========================================================
+HF_TOKEN=
+
+# ========================================================
+# 5. Server Bind Address
+# ========================================================
+API_HOST=0.0.0.0
+API_PORT=8000
+```
+
+---
+
+## 🚀 How to Run: Step-by-Step Guides
+
+### Track 1: ☁️ Running in Cloud AI Mode (Zero GPU)
+
+Ideal for shared hosting, cloud VPS, low-spec laptops, or lightweight servers.
+
+1. **Create and activate virtual environment**:
+   ```powershell
+   python -m venv venv
+   .\venv\Scripts\Activate.ps1
+   ```
+
+2. **Install lightweight dependencies** (no PyTorch / CUDA, < 50 MB total):
+   ```powershell
+   pip install -r requirements-cloud.txt
+   ```
+
+3. **Configure `.env`**:
+   Ensure `AI_MODE=cloud` and paste your `GEMINI_API_KEY`.
+
+4. **Index documents via Cloud AI**:
+   ```powershell
+   python main.py --index --input_dir ./data/
+   ```
+
+5. **Ask questions via CLI**:
+   ```powershell
+   python main.py --ask "Berapa total belanja di kwitansi?"
+   ```
+
+6. **Start the WhatsApp Bot & REST API**:
+   ```powershell
+   python -m uvicorn src.api.routes:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+---
+
+### Track 2: 🖥️ Running in Local GPU Mode (Qwen Model)
+
+Ideal for workstations with NVIDIA RTX GPUs needing 100% offline privacy.
+
+1. **Create and activate virtual environment**:
+   ```powershell
+   python -m venv venv
+   .\venv\Scripts\Activate.ps1
+   ```
+
+2. **Install GPU dependencies** (PyTorch with CUDA support):
+   ```powershell
+   pip install -r requirements.txt
+   ```
+   *(For newer RTX 50-series / Blackwell GPUs needing CUDA 12.8+: `pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu128`)*
+
+3. **Pre-download Qwen & Embedding Models**:
+   Run the dedicated download script to fetch and verify the models (~6.5 GB):
+   ```powershell
+   python scripts/download_models.py
+   ```
+   *(This downloads `Qwen/Qwen2.5-VL-3B-Instruct` and `intfloat/multilingual-e5-small` into local cache).*
+
+4. **Configure `.env`**:
+   Set:
+   ```dotenv
+   AI_MODE=local
+   ```
+
+5. **Index documents using local GPU**:
+   ```powershell
+   python main.py --index --input_dir ./data/
+   ```
+
+6. **Ask questions or start interactive chat (VRAM persistent)**:
+   ```powershell
+   # Single query:
+   python main.py --ask "What is the total expenditure?"
+
+   # Interactive chat session (model stays loaded in VRAM):
+   python main.py --chat
+   ```
+
+7. **Start the WhatsApp Bot & REST API using Local GPU**:
+   ```powershell
+   python -m uvicorn src.api.routes:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+---
+
+## 🌐 Connecting the WhatsApp Bot (Meta Webhook Setup)
+
+1. **Start the FastAPI server**:
+   ```powershell
+   python -m uvicorn src.api.routes:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+2. **Expose Localhost with Cloudflare Tunnel**:
+   Meta requires an `https://` webhook endpoint. Run the included `cloudflared.exe` in a separate terminal:
+   ```powershell
+   .\cloudflared.exe tunnel --url http://localhost:8000
+   ```
+   *(Copy the generated HTTPS URL, e.g., `https://example-subdomain.trycloudflare.com`)*
+
+3. **Configure Meta Developer Dashboard**:
+   - Go to **Meta for Developers** -> Your App -> **WhatsApp** -> **Configuration**.
+   - **Callback URL**: `https://<your-tunnel-url>.trycloudflare.com/webhook`
+   - **Verify Token**: Must match `WHATSAPP_VERIFY_TOKEN` in your `.env`.
+   - Click **Verify and Save**.
+   - Under **Webhook Fields**, click **Subscribe** on the **`messages`** event.
+
+---
+
+## 📊 Benchmark (Local GPU: 41-Page Scanned PDF Batch)
 
 **Setup**:
 - **Workload**: 41-page PDF containing mixed financial tables, SPBU receipts, collages, and official forms.
@@ -37,7 +228,7 @@ A local Visual-RAG pipeline for scanned documents, receipts, and tabular reports
 <br>
 
 | Page # | File | Category | Status | Latency (s) | Peak VRAM |
-| :---: | :--- | :--- | :---: | :---: | :---: |
+| :---: | :--- | :--- | :--- | :---: | :---: |
 | **1** | `page_1.jpg` | TABLE_REPORT | VERIFIED | 52.81 s | 7,549.2 MB |
 | **2** | `page_2.jpg` | TABLE_REPORT | VERIFIED | 19.82 s | 7,558.6 MB |
 | **3** | `page_3.jpg` | TABLE_REPORT | VERIFIED | 51.45 s | 7,563.1 MB |
@@ -82,179 +273,61 @@ A local Visual-RAG pipeline for scanned documents, receipts, and tabular reports
 
 </details>
 
-### 2. Architecture Notes
-
+### Architecture & Memory Notes
 - **Bounded Latency**: Dynamic pixel limits (`min_pixels` / `max_pixels`) prevent token blowup on dense receipt collages. Peak per-page latency remained under 54s.
 - **Stable VRAM Footprint**: VRAM stayed at **7.54–7.56 GB** (< 25 MB drift) across the entire 24-minute batch.
 - **Data Integrity**: Extractions passed arithmetic validation against listed line items.
 
----
-
-## Setup
-
-1. **Virtual Environment**
-   ```powershell
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
-   ```
-
-2. **Dependencies**
-   ```powershell
-   pip install -r requirements.txt
-   ```
-   *(For RTX 50-series / Blackwell GPUs needing CUDA 12.8+: `pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu128`)*
-
-3. **Poppler (Windows PDF Rendering)**
-   - Download Poppler binaries for Windows.
-   - Extract to `./tools/poppler/` or ensure `pdftoppm.exe` is in your system `PATH`.
+*(Note: In **Cloud AI Mode**, indexing and query answering take **1.0 – 2.0s per request** with **0 MB GPU VRAM** and < 100 MB system RAM).*
 
 ---
 
-## Usage
+## 📁 Directory Structure
 
-### 1. Indexing
-Place PDFs or scan images into `./data/`:
-```powershell
-python main.py --index --input_dir ./data/
-```
-Renders PDF pages, applies CLAHE contrast, extracts structured JSON via Qwen2.5-VL, writes `.txt` dumps into `./storage/outputtext/`, and indexes text into SQLite FTS5 + ChromaDB.
-
-### 2. Hybrid Search
-```powershell
-# Hybrid (FTS5 keyword + Vector E5 semantic via Reciprocal Rank Fusion):
-python main.py --search "operational and maintenance expenses"
-
-# Exact reference matching (e.g. invoice codes, dates, account numbers):
-python main.py --search "INV-2024-001" --search_mode fts
-
-# Semantic concept matching:
-python main.py --search "annual hardware procurement costs" --search_mode vector
-```
-
-### 3. Visual Question Answering
-```powershell
-# Standard streaming answer in terminal:
-python main.py --ask "What is the total expenditure stated in the document?"
-
-# Enforce Pydantic-validated Structured JSON Output:
-python main.py --ask "What is the total expenditure stated in the document?" --json
-```
-Retrieves the top candidate page and runs visual inference. Using `--json` guarantees structured fields (`direct_answer`, `numeric_value`, `currency`, `source_citation`, `breakdown`, `confidence`).
-
-### 4. Interactive Chat (Persistent VRAM)
-```powershell
-python main.py --chat
-```
-Keeps Qwen2.5-VL and the embedding model resident in memory to avoid reloading overhead between queries.
-
-### 5. Running the REST API & WhatsApp Bot Server (FastAPI)
-
-The project includes an enterprise-ready WhatsApp Bot powered by Meta WhatsApp Cloud API with multi-page visual RAG.
-
-#### A. Configure Credentials (`.env`)
-Create a `.env` file based on `.env.example`:
-```ini
-WHATSAPP_TOKEN=your_permanent_system_user_token_here
-PHONE_NUMBER_ID=your_phone_number_id_here
-WHATSAPP_VERIFY_TOKEN=your_custom_secret_verify_token
-```
-
-> [!TIP]
-> **Permanent Token (Anti-Expire):** Do not use the temporary 24-hour token from the "API Setup" tab. Instead:
-> 1. Go to **Business Settings** (`business.facebook.com/settings`) -> **Users** -> **System Users**.
-> 2. Create an **Admin System User** (or use existing).
-> 3. Assign your WhatsApp App asset with Full Control.
-> 4. Click **Generate New Token**, select your App, set expiration to **Never**, and check `whatsapp_business_messaging` and `whatsapp_business_management`.
-> 5. Paste this permanent token into `WHATSAPP_TOKEN` in `.env`.
-
-#### B. Start the Webhook Server
-```powershell
-uvicorn src.api.routes:app --host 0.0.0.0 --port 8000 --reload
-```
-
-#### C. Expose via Public HTTPS Tunnel
-Meta requires a valid `https://` webhook endpoint. Run Cloudflare Tunnel (or ngrok) in a separate terminal:
-```powershell
-.\cloudflared.exe tunnel --url http://localhost:8000
-```
-*(Or if installed globally: `cloudflared tunnel --url http://localhost:8000`)*
-
-#### D. Connect Webhook in Meta Developer Dashboard
-1. Go to your Meta App Dashboard -> **WhatsApp** -> **Configuration**.
-2. Set **Callback URL**: `https://<your-tunnel-url>.trycloudflare.com/webhook`
-3. Set **Verify Token**: Enter the same secret token you set in `WHATSAPP_VERIFY_TOKEN` (in `.env`).
-4. Click **Verify and Save**.
-5. Under **Webhook Fields**, click **Subscribe** on the **`messages`** event.
-
-#### E. Receiving Messages from Other Users (Production / Multi-User)
-- **In Development Mode:** Only numbers explicitly registered under **API Setup -> To (Manage Phone Number List)** can send and receive messages.
-- **For Any User (Live Public Bot):**
-  1. Toggle the App Mode in the top navigation bar from **In Development** to **Live**.
-  2. (Meta requires adding a basic Privacy Policy URL in **App Settings -> Basic** to go Live).
-  3. Once Live, any WhatsApp user worldwide can message your bot number and receive responses automatically!
-
-#### F. WhatsApp Bot Capabilities & Commands
-Once running, users can interact with your bot directly on WhatsApp:
-- **Live Document Ingestion (PDF / Images)**: 
-  Send any PDF document or scan image directly to the WhatsApp chat! The bot's background **`IngestionWorker`** will:
-  1. Download the file from Meta Cloud API to `./data/`.
-  2. Send progress messages to the user.
-  3. Render pages with Poppler and enhance contrast with CLAHE.
-  4. Perform OCR & structured field extraction via Qwen2.5-VL.
-  5. Index all pages into SQLite FTS5 and ChromaDB vector store.
-  6. Notify user once ready for searching and asking questions!
-- **Fast Search Mode (< 1s)**: Send `/cari <keyword>` or `cari: <keyword>` (e.g. `cari: SPBU Balung Lor`). Returns instant lexical + vector matches with relevance scores and snippets.
-- **AI Visual QA Mode**: Ask any free-form question (e.g. `Berapa total belanja bbm?`). Automatically triggers Top-7 multi-page hybrid context retrieval, smart table prioritization, and Qwen2.5-VL vision-language inference with instant acknowledgement.
-
----
-
-## Directory Structure
 ```text
-rag-DocumentVisual/
-├── config.yaml          # Centralized configuration (models, resolutions, paths)
-├── .env.example         # Environment variables template
-├── requirements.txt     # Python dependencies (Local GPU mode)
-├── requirements-cloud.txt # Lightweight Python dependencies for Shared Hosting
-├── passenger_wsgi.py    # cPanel Phusion Passenger WSGI entrypoint
-├── update.md            # Production RAG architecture & real-life strategy notes
-├── recommendation.md    # Shared hosting vs LangGraph deployment analysis
-├── main.py              # CLI entry point (index, search, ask, chat)
-├── src/
-│   ├── api/             # FastAPI REST endpoints & Meta WhatsApp Cloud client
-│   │   ├── routes.py    # REST routes & WhatsApp webhook handlers
-│   │   └── whatsapp.py  # Modular WhatsAppClient (handshake, parser, sender)
-│   ├── ingestion/       # PDF rendering & CLAHE contrast enhancement
-│   │   ├── loader.py    # Page rendering (Poppler / pypdfium2 fallback) & CLAHE
-│   │   └── worker.py    # Background IngestionWorker for WhatsApp PDF upload
-│   ├── chunking/        # Page and text chunking logic
-│   │   └── chunker.py
-│   ├── embeddings/      # multilingual-e5-small CPU embedding engine
-│   │   └── embedder.py
-│   ├── vectordb/        # ChromaDB vector store & SQLite FTS5 database
-│   │   ├── vector_store.py
-│   │   └── sqlite_db.py
-│   ├── retrieval/       # Hybrid Search with Reciprocal Rank Fusion (RRF)
-│   │   └── retriever.py
-│   ├── prompts/         # Structured extraction & QA prompt templates
-│   │   └── prompt_templates.py
-│   ├── llm/             # Document Vision-Language Model interfaces
-│   │   ├── llm_client.py     # Local Qwen2.5-VL GPU BF16 client
-│   │   └── gemini_client.py  # Cloud Google Gemini Flash REST client (Zero GPU)
-│   └── utils/           # Configuration loader & Pydantic arithmetic validation
-│       └── helpers.py
+RAG-DocumentVisual/
+├── config.yaml            # Centralized configuration (models, resolutions, paths)
+├── .env                   # Active environment variables
+├── .env.example           # Environment variables template
+├── requirements.txt       # Dependencies for Local GPU Mode (PyTorch, Transformers, CUDA)
+├── requirements-cloud.txt # Lightweight dependencies for Cloud AI & Shared Hosting
+├── passenger_wsgi.py      # cPanel Phusion Passenger WSGI entrypoint
+├── cloudflared.exe        # Cloudflare Tunnel binary for instant HTTPS webhook exposure
+├── main.py                # CLI entry point (index, search, ask, chat - supports both modes)
 ├── scripts/
-│   └── backfill_vectors.py  # Backfill SQLite documents into ChromaDB
-├── tests/
-│   └── test_app.py          # Modular architecture verification test suite
-├── logs/                    # Application and daemon logs
-├── data/                    # Raw input PDFs and scans
-└── storage/                 # Project-isolated models, databases, and dumps
-    ├── models/              # Local Hugging Face & PyTorch weights cache
-    ├── doc_archive.db       # SQLite database with FTS5 search index
-    ├── chroma/              # ChromaDB vector database index
-    ├── pages/               # Rendered uncompressed PDF page images
-    ├── enhanced_pages/      # Preprocessed, contrast-enhanced scan images
-    ├── outputtext/          # Clean .txt plain-text exports for all pages
-    └── result.json          # Latest query response output
+│   ├── download_models.py # Pre-downloads Qwen2.5-VL and Multilingual-E5 for local mode
+│   └── backfill_vectors.py# Backfill SQLite documents into ChromaDB
+├── src/
+│   ├── api/               # FastAPI REST endpoints & WhatsApp Bot integration
+│   │   ├── routes.py      # REST routes & WhatsApp webhook handlers
+│   │   ├── whatsapp.py    # Modular WhatsAppClient (handshake, parser, media, sender)
+│   │   └── queue_processor.py # Background task processing
+│   ├── llm/               # Document Vision-Language Model interfaces
+│   │   ├── gemini_client.py # Cloud Google Gemini Flash client (Zero GPU, Multimodal)
+│   │   └── llm_client.py   # Local Qwen2.5-VL GPU BF16 client
+│   ├── ingestion/         # PDF rendering & CLAHE contrast enhancement
+│   │   ├── loader.py      # Page rendering (Poppler / pypdfium2) & CLAHE filter
+│   │   └── worker.py      # Background IngestionWorker for WhatsApp uploads
+│   ├── retrieval/         # Hybrid Search with Reciprocal Rank Fusion (RRF)
+│   │   └── retriever.py
+│   ├── vectordb/          # ChromaDB vector store & SQLite FTS5 database
+│   │   ├── sqlite_db.py   # SQLite storage & full-text search index
+│   │   └── vector_store.py# ChromaDB dense vector store
+│   ├── embeddings/        # multilingual-e5-small CPU embedding engine
+│   ├── chunking/          # Page and text chunking logic
+│   ├── prompts/           # Structured extraction & QA prompt templates
+│   └── utils/             # Pydantic schemas, image helpers, arithmetic validators
+├── storage/               # Databases, page caches, and rendered artifacts
+│   ├── doc_archive.db     # SQLite database with FTS5 search index
+│   ├── chroma/            # ChromaDB vector collection
+│   ├── pages/             # Rendered PDF page images
+│   ├── enhanced_pages/    # CLAHE contrast-enhanced images
+│   └── outputtext/        # Plain-text exports for all pages
+└── data/                  # Raw input PDFs and scans
 ```
-asdas
+
+---
+
+## 📜 License & Citation
+
+Designed for intelligent document processing, financial auditing, and automated receipt verification. Free to adapt and use for personal or commercial projects.

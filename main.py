@@ -2,15 +2,48 @@ import argparse
 import os
 import json
 import time
-import torch
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
+
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    torch = None
+    HAS_TORCH = False
+
 from src.ingestion.loader import render_pdf, enhance_scan
 from src.vectordb.sqlite_db import SqliteDocDatabase
 from src.vectordb.vector_store import ChromaVectorStore
 from src.retrieval.retriever import HybridRetriever
-from src.llm.llm_client import QwenVisualReader
 from src.utils.helpers import validate_extraction
 
 db = SqliteDocDatabase()
+
+def get_reader():
+    """
+    Factory to return either Cloud GeminiVisualReader or Local QwenVisualReader
+    based on the AI_MODE environment variable ('cloud' or 'local').
+    """
+    ai_mode = os.getenv("AI_MODE", "cloud").lower()
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+
+    if ai_mode == "local":
+        if not HAS_TORCH:
+            raise ImportError(
+                "PyTorch / CUDA is not installed. To run in 'local' mode with Qwen, "
+                "install requirements via 'pip install -r requirements.txt'."
+            )
+        from src.llm.llm_client import QwenVisualReader
+        print("[LLM Factory] Initializing Local QwenVisualReader (Qwen2.5-VL BF16 on GPU)...")
+        return QwenVisualReader()
+    else:
+        from src.llm.gemini_client import GeminiVisualReader
+        if not gemini_key:
+            print("[LLM Factory] ⚠️ Warning: GEMINI_API_KEY is not set in .env. Cloud AI calls may fail.")
+        print("[LLM Factory] Initializing Cloud GeminiVisualReader (Google Gemini Flash via REST API)...")
+        return GeminiVisualReader(api_key=gemini_key)
 
 def index_documents(input_dir: str):
     if not os.path.exists(input_dir):
@@ -18,7 +51,7 @@ def index_documents(input_dir: str):
         return
 
     # Initialize the reader and vector store lazily
-    reader = QwenVisualReader()
+    reader = get_reader()
     vector_store = ChromaVectorStore()
     
     for filename in os.listdir(input_dir):
@@ -47,16 +80,21 @@ def index_documents(input_dir: str):
                 print(f"Page already indexed ({enhanced_path}), skipping...")
                 continue
                 
-            torch.cuda.reset_peak_memory_stats()
-            torch.cuda.synchronize()
+            if HAS_TORCH and torch.cuda.is_available():
+                torch.cuda.reset_peak_memory_stats()
+                torch.cuda.synchronize()
             t0 = time.time()
             
             print(f"Processing: {enhanced_path}...")
             result = reader.process_document(enhanced_path)
             
-            torch.cuda.synchronize()
+            if HAS_TORCH and torch.cuda.is_available():
+                torch.cuda.synchronize()
+                peak_vram = torch.cuda.max_memory_allocated() / (1024 ** 2)
+            else:
+                peak_vram = 0.0
+                
             latency = time.time() - t0
-            peak_vram = torch.cuda.max_memory_allocated() / (1024 ** 2)
             
             doc_category = result.get("doc_category", "OTHER")
             structured_data = result.get("structured_data", {})
@@ -65,7 +103,8 @@ def index_documents(input_dir: str):
             validation_status = validate_extraction(doc_category, structured_data)
             structured_data["validation_status"] = validation_status
             
-            print(f"Validation: {validation_status} | Latency: {latency:.2f}s | Peak VRAM: {peak_vram:.1f}MB")
+            vram_str = f"{peak_vram:.1f}MB" if peak_vram > 0 else "0 MB (Cloud)"
+            print(f"Validation: {validation_status} | Latency: {latency:.2f}s | Peak VRAM: {vram_str}")
             
             db.save_document(
                 file_path=enhanced_path,
@@ -78,25 +117,29 @@ def index_documents(input_dir: str):
             print(f"Saved {enhanced_path} to database.")
 
             # Sync to ChromaDB vector store
-            vector_store.upsert_page(
-                file_path=enhanced_path,
-                text=result.get("full_transcription", ""),
-                category=doc_category,
-                title=result.get("title_or_subject", "Unknown Title")
+            print(f"Generating vectors and syncing to ChromaDB...")
+            vector_store.add_document(
+                doc_id=enhanced_path,
+                full_text=result.get("full_transcription", ""),
+                metadata={
+                    "file_path": enhanced_path,
+                    "doc_category": doc_category,
+                    "title": result.get("title_or_subject", "Unknown Title"),
+                    "has_visuals": str(result.get("has_stamps_or_signatures", False))
+                }
             )
-            print(f"Indexed {enhanced_path} into ChromaDB vector store.")
 
-            # Save readable text output to ./storage/outputtext/
-            output_text_dir = os.path.abspath("./storage/outputtext")
-            os.makedirs(output_text_dir, exist_ok=True)
+            # Dump human-readable text file
+            txt_dir = "./storage/outputtext"
+            os.makedirs(txt_dir, exist_ok=True)
             txt_filename = os.path.splitext(os.path.basename(enhanced_path))[0] + ".txt"
-            txt_path = os.path.join(output_text_dir, txt_filename)
+            txt_path = os.path.join(txt_dir, txt_filename)
             with open(txt_path, "w", encoding="utf-8") as f:
-                f.write(f"=== DOCUMENT METADATA ===\n")
-                f.write(f"Source Page: {enhanced_path}\n")
+                f.write(f"=== METADATA ===\n")
+                f.write(f"Source: {enhanced_path}\n")
                 f.write(f"Category: {doc_category}\n")
-                f.write(f"Title / Subject: {result.get('title_or_subject', 'Unknown Title')}\n")
-                f.write(f"Has Stamps / Signatures: {result.get('has_stamps_or_signatures', False)}\n")
+                f.write(f"Title: {result.get('title_or_subject', '')}\n")
+                f.write(f"Has Visuals: {result.get('has_stamps_or_signatures', False)}\n")
                 f.write(f"Validation: {validation_status}\n\n")
                 f.write(f"=== STRUCTURED DATA (JSON) ===\n")
                 f.write(json.dumps(structured_data, indent=2, ensure_ascii=False))
@@ -206,7 +249,7 @@ def answer_question(question: str, reader=None, vector_store=None, stream: bool 
         print("─" * 70)
     
     if reader is None:
-        reader = QwenVisualReader()
+        reader = get_reader()
         
     if structured:
         structured_resp = reader.answer_question_structured(target_page, question)
@@ -249,24 +292,21 @@ def answer_question(question: str, reader=None, vector_store=None, stream: bool 
             "answer": output_text,
             "latency_seconds": round(elapsed, 2)
         }
-        
         os.makedirs("./storage", exist_ok=True)
         with open("./storage/result.json", "w", encoding="utf-8") as f:
             json.dump(result_data, f, indent=2, ensure_ascii=False)
-        print("Saved answer to ./storage/result.json\n")
         return output_text
 
 def ask(question: str, structured: bool = False):
     answer_question(question, structured=structured)
 
-
 def chat_session():
     print("=" * 60)
     print("  Interactive Visual-RAG Chat Session (Hybrid Search Enabled)")
     print("=" * 60)
-    print("Loading models (one-time GPU & Vector Store initialization)...")
+    print("Loading models (one-time initialization)...")
     
-    reader = QwenVisualReader()
+    reader = get_reader()
     vector_store = ChromaVectorStore()
     
     print("\nModels loaded and ready! Ask questions about your indexed documents.")
@@ -289,14 +329,14 @@ def chat_session():
         answer_question(prompt, reader=reader, vector_store=vector_store)
 
 def main():
-    parser = argparse.ArgumentParser(description="Local Windows-Native General Document Visual-RAG")
+    parser = argparse.ArgumentParser(description="Visual-RAG (Cloud & Local GPU)")
     parser.add_argument("--index", action="store_true", help="Index documents in the specified directory")
     parser.add_argument("--input_dir", type=str, default="./data/", help="Directory containing PDFs/Images to index")
     parser.add_argument("--search", type=str, help="Search the indexed documents")
     parser.add_argument("--search_mode", type=str, default="hybrid", choices=["hybrid", "fts", "vector"], help="Search mode (hybrid, fts, vector)")
     parser.add_argument("--ask", type=str, help="Ask a one-off question about the documents")
     parser.add_argument("--json", action="store_true", help="Enforce structured JSON output (Pydantic validated)")
-    parser.add_argument("--chat", action="store_true", help="Start an interactive chat session with model kept loaded in GPU memory")
+    parser.add_argument("--chat", action="store_true", help="Start an interactive chat session")
     
     args = parser.parse_args()
     
